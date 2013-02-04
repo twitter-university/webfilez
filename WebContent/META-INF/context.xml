@@ -1,6 +1,0 @@
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE Context>
-<Context>
-  <Environment name="auth-key" value="b31320ae26cc9b8ff0b99c1c4f0ed59df17c1048" type="java.lang.String"/>
-  <Environment name="auth-url" value="https://localhost.marakana.com/urlauth?authUrl=" type="java.lang.String"/>
-</Context>

@@ -1,12 +1,5 @@
 /build/*
 /build.properties
 /src/log4j.properties
-/META-INF/context.xml
+/WebContent/META-INF/context.xml
 
-*.class
-
-# Package Files #
-*.war
-*.ear
-
-/build
