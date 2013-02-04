@@ -1,0 +1,6 @@
+= README
+
+Marakana WebFilez is a simple Java web-application providing HTML5-based file-management on a remote server.
+
+More information to follow.
+

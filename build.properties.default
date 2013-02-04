@@ -1,0 +1,10 @@
+# Set to point to Tomcat's home (i.e. installation) directory
+catalina-home.dir=/usr/local/tomcat
+
+catalina-lib.dir=${catalina-home.dir}/lib
+
+# Local deploy directory
+deploy.dir=${catalina-home.dir}/webapps
+
+# App name
+app.name=webfilez

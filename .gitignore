@@ -1,0 +1,13 @@
+/build/*
+/build.properties
+/src/log4j.properties
+/META-INF/context.xml
+
+*.class
+
+# Package Files #
+*.jar
+*.war
+*.ear
+
+/build
