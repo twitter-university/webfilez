@@ -165,25 +165,31 @@ public final class WebFilezServlet extends HttpServlet {
 								+ "] in response to [" + uri + "]");
 			}
 		} else {
-			// search for the closest folder that does exist
-			// until we get to directory root
-			for (; !file.equals(this.rootDir) && !file.exists() && uri != null
-					&& !uri.equals(basePath); file = file.getParentFile(), uri = getParentUriPath(uri)) {
-				if (logger.isDebugEnabled()) {
-					logger.debug("Trying to see if [" + uri + "] exists.");
-				}
-			}
-			if (uri != null) {
-				if (logger.isDebugEnabled()) {
-					logger.debug("Attempting to recover. Redirecting to: "
-							+ uri);
-				}
-				response.sendRedirect(uri);
+			if (file.equals(this.rootDir)) {
+				this.sendServerFailure(request, response,
+						"Failed to access/create " + file.getAbsolutePath());
 			} else {
-				this.refuseRequest(request, response,
-						HttpServletResponse.SC_NOT_FOUND, "No such file ["
-								+ file.getAbsolutePath() + "] in response to ["
-								+ uri + "]");
+				// search for the closest folder that does exist
+				// until we get to directory root
+				for (; !file.equals(this.rootDir) && !file.exists()
+						&& uri != null && !uri.equals(basePath); file = file
+						.getParentFile(), uri = getParentUriPath(uri)) {
+					if (logger.isDebugEnabled()) {
+						logger.debug("Trying to see if [" + uri + "] exists.");
+					}
+				}
+				if (uri != null) {
+					if (logger.isDebugEnabled()) {
+						logger.debug("Attempting to recover. Redirecting to: "
+								+ uri);
+					}
+					response.sendRedirect(uri);
+				} else {
+					this.refuseRequest(request, response,
+							HttpServletResponse.SC_NOT_FOUND, "No such file ["
+									+ file.getAbsolutePath()
+									+ "] in response to [" + uri + "]");
+				}
 			}
 		}
 	}
