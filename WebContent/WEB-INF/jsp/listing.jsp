@@ -31,7 +31,6 @@
       <button id="paste_button" type="button" class="button write-operation" disabled="disabled">Paste</button>
       <button id="clear_button" type="button" class="button" disabled="disabled">Clear</button>
     </div>
-    <!-- <div id="edit"></div> -->
     <table id="listing">
       <thead>
         <tr>
