@@ -1041,7 +1041,7 @@ public final class WebFilezServlet extends HttpServlet {
 			HttpServletResponse response, String msg, Throwable cause)
 			throws ServletException, IOException {
 		logger.error(msg, cause);
-		response.setStatus(HttpServletResponse.SC_INTERNAL_SERVER_ERROR);
+		response.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR);
 	}
 
 	private void sendServerFailure(HttpServletRequest request,
