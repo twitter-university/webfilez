@@ -176,7 +176,6 @@ public final class WebFilezServlet extends HttpServlet {
 								+ "] in response to [" + uri + "]");
 			}
 		} else {
-
 			// search for the closest folder that does exist
 			// until we get to directory root
 			for (; !file.equals(this.rootDir) && !file.exists() && uri != null
@@ -527,6 +526,12 @@ public final class WebFilezServlet extends HttpServlet {
 		return mimeType == null ? this.defaultMimeType : mimeType;
 	}
 
+	private boolean isClientAbortException(IOException e) {
+		Throwable cause = e.getCause();
+		return cause instanceof SocketException
+				&& "Broken pipe".equals(cause.getMessage());
+	}
+
 	private void sendFile(File file, OutputStream out, Range range)
 			throws FileNotFoundException, IOException {
 		long length = file.length();
@@ -554,22 +559,32 @@ public final class WebFilezServlet extends HttpServlet {
 				try {
 					out.write(buffer, 0, bytesRead);
 					bytesToRead -= bytesRead;
-				} catch (SocketException e) {
-					if (logger.isWarnEnabled()) {
-						logger.warn(
-								"Failed to write bytes to the client. It's possible that the client aborted the connection. Bailing out.",
-								"Broken pipe".equals(e.getMessage()) ? null : e);
+				} catch (IOException e) {
+					if (isClientAbortException(e)) {
+						if (logger.isDebugEnabled()) {
+							logger.debug("Client aborted the connection while sending file ["
+									+ file.getAbsolutePath() + "]. Bailing out");
+						}
+						return;
+					} else {
+						throw e;
 					}
-					return;
 				}
 			}
 			try {
 				out.flush();
-			} catch (SocketException e) {
-				if (logger.isWarnEnabled()) {
-					logger.warn(
-							"Failed to flush bytes to the client. It's possible that the client aborted the connection. Bailing out.",
-							"Broken pipe".equals(e.getMessage()) ? null : e);
+				if (logger.isTraceEnabled()) {
+					logger.trace("Sent " + file.getAbsolutePath());
+				}
+			} catch (IOException e) {
+				if (isClientAbortException(e)) {
+					if (logger.isDebugEnabled()) {
+						logger.debug("Client aborted the connection while flushing file ["
+								+ file.getAbsolutePath() + "]. Bailing out");
+					}
+					return;
+				} else {
+					throw e;
 				}
 			}
 		}
@@ -619,7 +634,6 @@ public final class WebFilezServlet extends HttpServlet {
 					if (!isHead(request)) {
 						response.setBufferSize(this.outputBufferSize);
 						sendFile(file, response.getOutputStream(), null);
-						logger.trace("Done");
 					}
 				} else if (ranges.size() == 1) {
 					Range range = ranges.get(0);
@@ -726,7 +740,6 @@ public final class WebFilezServlet extends HttpServlet {
 				}
 			}
 		}
-
 		if (in != null) {
 			try {
 				try (FileOutputStream out = new FileOutputStream(file)) {
