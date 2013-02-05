@@ -11,26 +11,34 @@ import static com.marakana.webfilez.FileUtil.zipDirectory;
 import static com.marakana.webfilez.FileUtil.zipFile;
 import static com.marakana.webfilez.FileUtil.zipFiles;
 import static com.marakana.webfilez.WebUtil.asParams;
+import static com.marakana.webfilez.WebUtil.generateETag;
 import static com.marakana.webfilez.WebUtil.getFileName;
 import static com.marakana.webfilez.WebUtil.getParentUriPath;
+import static com.marakana.webfilez.WebUtil.ifMatch;
 import static com.marakana.webfilez.WebUtil.ifModifiedSince;
+import static com.marakana.webfilez.WebUtil.ifNoneMatch;
 import static com.marakana.webfilez.WebUtil.ifUnmodifiedSince;
 import static com.marakana.webfilez.WebUtil.isHead;
 import static com.marakana.webfilez.WebUtil.isJson;
 import static com.marakana.webfilez.WebUtil.isMultiPartRequest;
 import static com.marakana.webfilez.WebUtil.isZip;
-import static com.marakana.webfilez.WebUtil.setContentHeaders;
+import static com.marakana.webfilez.WebUtil.parseRange;
+import static com.marakana.webfilez.WebUtil.setContentLength;
 import static com.marakana.webfilez.WebUtil.setNoCacheHeaders;
+import static java.lang.Math.max;
+import static java.lang.Math.min;
 
 import java.io.BufferedInputStream;
 import java.io.BufferedOutputStream;
 import java.io.File;
 import java.io.FileInputStream;
+import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.io.UnsupportedEncodingException;
+import java.net.SocketException;
 import java.net.URLDecoder;
 import java.nio.charset.Charset;
 import java.util.ArrayList;
@@ -45,6 +53,7 @@ import javax.naming.InitialContext;
 import javax.naming.NamingException;
 import javax.servlet.ServletConfig;
 import javax.servlet.ServletException;
+import javax.servlet.ServletOutputStream;
 import javax.servlet.http.HttpServlet;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
@@ -56,6 +65,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.marakana.webfilez.FileUtil.FileVisitor;
+import com.marakana.webfilez.WebUtil.Range;
 
 public final class WebFilezServlet extends HttpServlet {
 	private static final Pattern INVALID_SOURCE_PATH_PATTERN = Pattern
@@ -65,6 +75,7 @@ public final class WebFilezServlet extends HttpServlet {
 	private static final long serialVersionUID = 1L;
 	private static Logger logger = LoggerFactory
 			.getLogger(WebFilezServlet.class);
+	protected static final String MULTIPART_BOUNDARY = "webfilez_boundary";
 
 	private int outputBufferSize;
 
@@ -204,8 +215,11 @@ public final class WebFilezServlet extends HttpServlet {
 					+ file.getAbsolutePath() + "]");
 		}
 		if (file.exists()) {
+			long lastModified = file.lastModified();
+			String etag = generateETag(file.length(), lastModified);
 			if (!file.isFile()
-					|| ifUnmodifiedSince(request, file.lastModified())) {
+					|| (ifMatch(request, etag) && ifUnmodifiedSince(request,
+							lastModified))) {
 				if (delete(file)) {
 					response.setStatus(HttpServletResponse.SC_NO_CONTENT);
 				} else {
@@ -257,7 +271,11 @@ public final class WebFilezServlet extends HttpServlet {
 									+ file.getAbsolutePath() + "]");
 					return;
 				} else {
-					if (ifUnmodifiedSince(request, file.lastModified())) {
+
+					long lastModified = file.lastModified();
+					String etag = generateETag(file.length(), lastModified);
+					if (ifMatch(request, etag)
+							&& ifUnmodifiedSince(request, lastModified)) {
 						this.handleUploadToFile(file, request, response);
 					} else {
 						this.refuseRequest(request, response,
@@ -504,6 +522,59 @@ public final class WebFilezServlet extends HttpServlet {
 		}
 	}
 
+	private String getContentType(File file) {
+		String mimeType = super.getServletContext().getMimeType(file.getName());
+		return mimeType == null ? this.defaultMimeType : mimeType;
+	}
+
+	private void sendFile(File file, OutputStream out, Range range)
+			throws FileNotFoundException, IOException {
+		long length = file.length();
+		if (logger.isTraceEnabled()) {
+			logger.trace(String.format("Sending bytes %d-%d/%d of file %s",
+					range == null ? 0 : range.getStart(),
+					range == null ? max(length - 1, 0) : range.getEnd(),
+					length, file.getAbsolutePath()));
+		}
+		try (InputStream in = new BufferedInputStream(
+				new FileInputStream(file), this.inputBufferSize)) {
+			if (range != null) {
+				long skipped = in.skip(range.getStart());
+				if (skipped < range.getStart()) {
+					throw new IOException("Tried to skip [" + range.getStart()
+							+ "] but actually skipped [" + skipped + "] on ["
+							+ file.getAbsolutePath() + "]");
+				}
+			}
+			long bytesToRead = range == null ? length : range.getBytesToRead();
+			byte[] buffer = new byte[this.inputBufferSize];
+			for (int bytesRead; bytesToRead > 0
+					&& (bytesRead = in.read(buffer, 0,
+							(int) min(buffer.length, bytesToRead))) > 0;) {
+				try {
+					out.write(buffer, 0, bytesRead);
+					bytesToRead -= bytesRead;
+				} catch (SocketException e) {
+					if (logger.isWarnEnabled()) {
+						logger.warn(
+								"Failed to write bytes to the client. It's possible that the client aborted the connection. Bailing out.",
+								"Broken pipe".equals(e.getMessage()) ? null : e);
+					}
+					return;
+				}
+			}
+			try {
+				out.flush();
+			} catch (SocketException e) {
+				if (logger.isWarnEnabled()) {
+					logger.warn(
+							"Failed to flush bytes to the client. It's possible that the client aborted the connection. Bailing out.",
+							"Broken pipe".equals(e.getMessage()) ? null : e);
+				}
+			}
+		}
+	}
+
 	private void handleDownload(HttpServletRequest request,
 			HttpServletResponse response, File file) throws IOException,
 			ServletException {
@@ -514,55 +585,79 @@ public final class WebFilezServlet extends HttpServlet {
 							+ request.getRequestURI()
 							+ "]; file cannot be read");
 		} else {
+			long length = file.length();
 			long lastModified = file.lastModified();
-			if (ifModifiedSince(request, lastModified)) {
-				int length = (int) file.length();
-				String mimeType = super.getServletContext().getMimeType(
-						file.getName());
-				if (mimeType == null) {
-					mimeType = this.defaultMimeType;
+			String eTag = generateETag(length, lastModified);
+			String contentType = getContentType(file);
+			if (lastModified >= 0) {
+				response.setDateHeader("Last-Modified", lastModified);
+			}
+			if (eTag != null) {
+				response.setHeader("ETag", eTag);
+			}
+			response.setHeader("Accept-Ranges", "bytes");
+			List<Range> ranges = parseRange(request, response, eTag,
+					lastModified, length);
+			if (ranges == null) {
+				if (logger.isWarnEnabled()) {
+					logger.warn("Cannot handle download of ["
+							+ file.getAbsolutePath()
+							+ "]. Problem with ranges.");
 				}
-				setContentHeaders(response, length, lastModified, mimeType);
-				// TODO: add support for Ranges download!!!
-				response.setHeader("Accept-Ranges", "none");
-				if (!isHead(request)) {
+				return;
+			} else if (ifNoneMatch(request, eTag)
+					|| ifModifiedSince(request, lastModified)) {
+				if (ranges.isEmpty()) {
 					if (logger.isTraceEnabled()) {
-						logger.trace(String
-								.format("Sending file %s (length=%d, mime-type=%s, last-modified=%d) in response to request %s",
-										file.getAbsolutePath(), length,
-										mimeType, lastModified,
-										request.getRequestURI()));
+						logger.trace(request.getMethod()
+								+ " request for the entire "
+								+ request.getRequestURI());
 					}
-					response.setBufferSize(this.outputBufferSize);
-
-					try (InputStream in = new BufferedInputStream(
-							new FileInputStream(file), this.inputBufferSize)) {
-						OutputStream out = response.getOutputStream();
-						byte[] buffer = new byte[this.inputBufferSize];
-						int nread;
-						while ((nread = in.read(buffer)) > 0) {
-							try {
-								out.write(buffer, 0, nread);
-							} catch (IOException e) {
-								if (logger.isWarnEnabled()) {
-									logger.warn(
-											"Failed to write bytes to the client. It's possible that the client aborted the connection. Bailing out.",
-											e);
-								}
-								break;
-							}
-						}
-						try {
-							out.flush();
-						} catch (IOException e) {
-							if (logger.isWarnEnabled()) {
-								logger.warn(
-										"Failed to flush bytes to the client. It's possible that the client aborted the connection. Bailing out.",
-										e);
-							}
+					response.setStatus(HttpServletResponse.SC_OK);
+					response.setContentType(contentType);
+					setContentLength(response, length);
+					if (!isHead(request)) {
+						response.setBufferSize(this.outputBufferSize);
+						sendFile(file, response.getOutputStream(), null);
+						logger.trace("Done");
+					}
+				} else if (ranges.size() == 1) {
+					Range range = ranges.get(0);
+					if (logger.isTraceEnabled()) {
+						logger.trace(request.getMethod() + " request for "
+								+ range.toContentRangeHeaderValue() + " of "
+								+ request.getRequestURI());
+					}
+					response.setStatus(HttpServletResponse.SC_PARTIAL_CONTENT);
+					response.addHeader("Content-Range",
+							range.toContentRangeHeaderValue());
+					setContentLength(response, range.getBytesToRead());
+					response.setContentType(contentType);
+					if (!isHead(request)) {
+						response.setBufferSize(this.outputBufferSize);
+						sendFile(file, response.getOutputStream(), range);
+					}
+				} else if (ranges.size() > 1) {
+					if (logger.isTraceEnabled()) {
+						logger.trace(request.getMethod() + " request for "
+								+ ranges + " of " + request.getRequestURI());
+					}
+					response.setStatus(HttpServletResponse.SC_PARTIAL_CONTENT);
+					response.setContentType("multipart/byteranges; boundary="
+							+ MULTIPART_BOUNDARY);
+					if (!isHead(request)) {
+						ServletOutputStream out = response.getOutputStream();
+						for (Range range : ranges) {
+							// Writing MIME header.
+							out.println();
+							out.println("--" + MULTIPART_BOUNDARY);
+							out.println("Content-Type: " + contentType);
+							out.println("Content-Range: "
+									+ range.toContentRangeHeaderValue());
+							out.println();
+							sendFile(file, out, range);
 						}
 					}
-					logger.trace("Done");
 				}
 			} else {
 				response.setStatus(HttpServletResponse.SC_NOT_MODIFIED);
@@ -995,12 +1090,16 @@ public final class WebFilezServlet extends HttpServlet {
 
 	private long writeFileInfoToJson(File file, JSONWriter jsonWriter)
 			throws JSONException {
+		long size = size(file);
+		long lastModified = file.lastModified();
 		jsonWriter.object();
 		jsonWriter.key("name").value(file.getName());
 		jsonWriter.key("type").value(getFileType(file));
-		long size = size(file);
 		jsonWriter.key("size").value(size);
-		jsonWriter.key("lastModified").value(file.lastModified());
+		jsonWriter.key("lastModified").value(lastModified);
+		if (file.isFile()) {
+			jsonWriter.key("eTag").value(generateETag(size, lastModified));
+		}
 		jsonWriter.endObject();
 		return size;
 	}
@@ -1057,5 +1156,4 @@ public final class WebFilezServlet extends HttpServlet {
 	private Boolean getWriteAllowed(HttpServletRequest request) {
 		return (Boolean) request.getAttribute(Constants.WRITE_ALLOWED);
 	}
-
 }

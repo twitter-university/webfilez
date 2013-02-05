@@ -1,7 +1,15 @@
 package com.marakana.webfilez;
 
 import static com.marakana.webfilez.Util.contains;
+import static java.lang.Long.parseLong;
+import static java.lang.Math.min;
 
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Date;
+import java.util.List;
+import java.util.StringTokenizer;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -153,12 +161,14 @@ public class WebUtil {
 			return true;
 		} else if (ifUnmodifiedSince < lastModified) {
 			if (logger.isTraceEnabled()) {
-				logger.trace("Modified: " + req.getRequestURI());
+				logger.trace(req.getRequestURI() + " not unmodified since "
+						+ new Date(lastModified));
 			}
 			return false;
 		} else {
 			if (logger.isTraceEnabled()) {
-				logger.trace("Not modified: " + req.getRequestURI());
+				logger.trace(req.getRequestURI() + " unmodified since "
+						+ new Date(lastModified));
 			}
 			return true;
 		}
@@ -182,32 +192,79 @@ public class WebUtil {
 			return true;
 		} else if (ifModifiedSince >= lastModified) {
 			if (logger.isTraceEnabled()) {
-				logger.trace("Not modified: " + req.getRequestURI());
+				logger.trace(req.getRequestURI() + " not modified since "
+						+ new Date(lastModified));
 			}
 			return false;
 		} else {
 			if (logger.isTraceEnabled()) {
-				logger.trace("Modified: " + req.getRequestURI());
+				logger.trace(req.getRequestURI() + " modified since "
+						+ new Date(lastModified));
 			}
 			return true;
 		}
 	}
 
-	public static void setContentHeaders(HttpServletResponse resp, int length,
-			long lastModified, String mimeType) {
-		if (mimeType != null) {
-			resp.setContentType(mimeType);
-		}
-		if (length >= 0) {
-			resp.setContentLength(length);
-		}
-		if (lastModified >= 0) {
-			resp.setDateHeader("Last-Modified", lastModified);
-			resp.setHeader("ETag", generateETag(length, lastModified));
+	public static boolean ifMatch(HttpServletRequest req, String eTag) {
+		String ifMatch = req.getHeader("If-Match");
+		if (ifMatch == null) {
+			return true;
+		} else if (ifMatch.equals("*")) {
+			return eTag != null;
+		} else {
+			for (StringTokenizer st = new StringTokenizer(ifMatch, ","); st
+					.hasMoreTokens();) {
+				if (eTag.equals(st.nextToken().trim())) {
+					if (logger.isTraceEnabled()) {
+						logger.trace(req.getRequestURI() + " matches " + eTag);
+					}
+					return true;
+				}
+			}
+			if (logger.isTraceEnabled()) {
+				logger.trace(req.getRequestURI() + " does not match " + eTag);
+			}
+			return false;
 		}
 	}
 
-	public static String generateETag(int length, long lastModified) {
+	/**
+	 * @return true if the request does not contain 'If-None-Match' or if its
+	 *         value is '*' and the etag is null or if its value does not match
+	 *         the etag; false otherwise.
+	 */
+	public static boolean ifNoneMatch(HttpServletRequest req, String eTag) {
+		String ifNoneMatch = req.getHeader("If-None-Match");
+		if (ifNoneMatch == null) {
+			return true;
+		} else if (ifNoneMatch.equals("*")) {
+			return eTag == null;
+		} else {
+			for (StringTokenizer st = new StringTokenizer(ifNoneMatch, ","); st
+					.hasMoreTokens();) {
+				if (eTag.equals(st.nextToken().trim())) {
+					if (logger.isTraceEnabled()) {
+						logger.trace(req.getRequestURI() + " matches " + eTag);
+					}
+					return false;
+				}
+			}
+			if (logger.isTraceEnabled()) {
+				logger.trace(req.getRequestURI() + " does not match " + eTag);
+			}
+			return true;
+		}
+	}
+
+	public static void setContentLength(HttpServletResponse resp, long length) {
+		if (length < Integer.MAX_VALUE) {
+			resp.setContentLength((int) length);
+		} else {
+			resp.setHeader("Content-Length", String.valueOf(length));
+		}
+	}
+
+	public static String generateETag(long length, long lastModified) {
 		return String.format("\"%d%d\"", length, lastModified);
 	}
 
@@ -262,6 +319,141 @@ public class WebUtil {
 			}
 		} else {
 			return null;
+		}
+	}
+
+	private static void setContentRangeHeader(HttpServletResponse response,
+			long length) {
+		response.addHeader("Content-Range", "bytes */" + length);
+	}
+
+	/**
+	 * 
+	 * @param request
+	 * @param eTag
+	 * @param lastModified
+	 * @return true if there is no "If-Range" header or if its value matches the
+	 *         eTag or it represents a date and its less than or equal to
+	 *         lastModified
+	 */
+	public static boolean ifRange(HttpServletRequest request, String eTag,
+			long lastModified) {
+		String ifRangeHeader = request.getHeader("If-Range");
+		if (ifRangeHeader == null
+				|| (ifRangeHeader = ifRangeHeader.trim()).isEmpty()) {
+			return true;
+		} else if (ifRangeHeader.startsWith("W/")
+				|| ifRangeHeader.charAt(0) == '"') {
+			final boolean result = eTag.equals(ifRangeHeader);
+			if (logger.isTraceEnabled()) {
+				logger.trace("If-Range on " + request.getRequestURI()
+						+ (result ? " matches " : " does not match ") + eTag);
+			}
+			return result;
+		} else {
+			final boolean result = getDateHeader(request, "If-Range") <= lastModified;
+			if (logger.isTraceEnabled()) {
+				logger.trace("If-Range on " + request.getRequestURI()
+						+ (result ? " has" : " has not")
+						+ " been modified since " + lastModified);
+			}
+			return result;
+		}
+	}
+
+	public static List<Range> parseRange(HttpServletRequest request,
+			HttpServletResponse response, String eTag, long lastModified,
+			long length) throws IOException {
+		String rangeHeader = request.getHeader("Range");
+		if (length == 0 || rangeHeader == null
+				|| !ifRange(request, eTag, lastModified)) {
+			return Collections.emptyList();
+		} else if (!rangeHeader.startsWith("bytes")) {
+			setContentRangeHeader(response, length);
+			response.sendError(HttpServletResponse.SC_REQUESTED_RANGE_NOT_SATISFIABLE);
+			return null;
+		} else {
+			ArrayList<Range> result = new ArrayList<Range>(6);
+			for (StringTokenizer st = new StringTokenizer(
+					rangeHeader.substring(6), ","); st.hasMoreTokens();) {
+				String range = st.nextToken().trim();
+				int dashPos = range.indexOf('-');
+				final long start;
+				final long end;
+				try {
+					if (dashPos == -1) {
+						setContentRangeHeader(response, length);
+						response.sendError(HttpServletResponse.SC_REQUESTED_RANGE_NOT_SATISFIABLE);
+						return null;
+					} else if (dashPos == 0) {
+						long offset = parseLong(range);
+						start = length + offset;
+						end = length - 1;
+					} else {
+						start = parseLong(range.substring(0, dashPos));
+						end = (dashPos < range.length() - 1) ? parseLong(range
+								.substring(dashPos + 1, range.length()))
+								: length - 1;
+					}
+					Range currentRange = new Range(start, end, length);
+					if (!currentRange.isValid()) {
+						setContentRangeHeader(response, length);
+						response.sendError(HttpServletResponse.SC_REQUESTED_RANGE_NOT_SATISFIABLE);
+						return null;
+					}
+					result.add(currentRange);
+				} catch (NumberFormatException e) {
+					setContentRangeHeader(response, length);
+					response.sendError(HttpServletResponse.SC_REQUESTED_RANGE_NOT_SATISFIABLE);
+					return null;
+				}
+			}
+			return result;
+		}
+	}
+
+	public static final class Range {
+
+		private final long start;
+		private final long end;
+		private final long length;
+
+		public Range(long start, long end, long length) {
+			this.start = start;
+			this.end = end;
+			this.length = length;
+		}
+
+		public long getStart() {
+			return this.start;
+		}
+
+		public long getEnd() {
+			return this.end;
+		}
+
+		public long getLength() {
+			return this.length;
+		}
+
+		public long getBytesToRead() {
+			return this.end - this.start + 1;
+		}
+
+		public boolean isValid() {
+			return (this.start >= 0) && (this.end >= 0)
+					&& (this.start <= min(this.end, this.length - 1))
+					&& (this.length > 0);
+		}
+
+		public String toContentRangeHeaderValue() {
+			return String.format("bytes %d-%d/%d", this.start, this.end,
+					this.length);
+		}
+
+		@Override
+		public String toString() {
+			return String.format("%d-%d/%d", this.start, this.end, this.length);
 		}
 	}
 }

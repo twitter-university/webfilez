@@ -124,19 +124,20 @@ function downloadAsZip() {
       + encodeURI(filename);
 }
 
-function saveFile(filename, lastModified, data, tr, onSaveFn) {
-  log("Saving " + filename + " last modified " + lastModified);
+function saveFile(filename, eTag, lastModified, data, tr, onSaveFn) {
+  log("Saving " + filename + " with eTag " + eTag + " last modified " + lastModified);
   $.ajax({
     url : toUri(filename),
     type : 'PUT',
     headers : {
+      'If-Match' : eTag,
       'If-Unmodified-Since' : lastModified
     },
     data : data,
     contentType : "text/plain",
     dataType : 'json'
   }).done(function(file) {
-    log("Saved " + file.name + " last modified " + file.lastModified);
+    log("Saved " + file.name);
     tr.replaceWith(fileToRow(file));
     if (onSaveFn) {
       onSaveFn(file);
@@ -151,6 +152,7 @@ function edit() {
   log("Editing " + filename);
   var content = $("<textarea>").attr('name', 'content');
   var lastModified = null;
+  var eTag = null;
   var editDialog = $("<div>").attr('id', 'edit').attr("title", filename).html("<p>Loading...</p>");
   editDialog.dialog({
     width : 640,
@@ -158,14 +160,15 @@ function edit() {
     modal : true,
     buttons : {
       OK : function() {
-        saveFile(filename, lastModified, content.attr('value'), tr, function(file) {
+        saveFile(filename, eTag, lastModified, content.attr('value'), tr, function(file) {
           setStatus("Saved '" + filename + "'");
           editDialog.dialog("destroy");
         });
       },
       Apply : function() {
-        saveFile(filename, lastModified, content.attr('value'), tr, function(file) {
+        saveFile(filename, eTag, lastModified, content.attr('value'), tr, function(file) {
           lastModified = new Date(file.lastModified).toGMTString();
+          eTag = file.eTag;
           editDialog.dialog("option", "title", filename + " (saved)").effect("highlight", {}, 500);
           setTimeout(function() {
             $("#edit").dialog("option", "title", filename);
@@ -184,6 +187,7 @@ function edit() {
   }).done(function(data, textStatus, jqXHR) {
     editDialog.empty();
     editDialog.append(content.text(data));
+    eTag = jqXHR.getResponseHeader('ETag');
     lastModified = jqXHR.getResponseHeader('Last-Modified');
   }).fail(handleError);
 }
