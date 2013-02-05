@@ -493,7 +493,7 @@ public final class WebFilezServlet extends HttpServlet {
 			jsonWriter.endObject();
 		} else {
 			if (logger.isTraceEnabled()) {
-				logger.trace("Sending to listing JSP to handle ["
+				logger.trace("Sending HTML for listing ["
 						+ request.getRequestURI() + "]");
 			}
 			request.setAttribute("uri", uri);
