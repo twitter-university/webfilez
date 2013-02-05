@@ -104,7 +104,7 @@ function unzip() {
     data : "_action=unzip",
     dataType : 'json',
     beforeSend : function() {
-      setStatus("Unzipping '" + filename + "'");
+      setStatus("Unzipping '" + filename + "' ...", true);
     },
     context : filename
   }).done(function(files) {
@@ -323,7 +323,7 @@ function deleteNextFile(filenames) {
       type : "DELETE",
       context : filename,
       beforeSend : function() {
-        setStatus("Deleting '" + filename + "'");
+        setStatus("Deleting '" + filename + "' ...", true);
       }
     }).done(function() {
       removeFileRow(filename);
@@ -338,7 +338,7 @@ function handleDelete() {
   if (confirm("Please confirm that you wish to delete the following resources:\n\n"
       + filenames.join("\n"))) {
     setEnabledStatusOnActionButtons(false);
-    deleteNextFile(filenames);
+    deleteNextFile(filenames.reverse());
   }
   return false;
 }
@@ -352,6 +352,7 @@ function deleteFile() {
 }
 
 function handleZip() {
+  setStatus("Creating a ZIP archive ...", true);
   $.ajax({
     url : window.location.pathname,
     type : "POST",
@@ -363,7 +364,7 @@ function handleZip() {
     setStatus("Created a ZIP archive '" + file.name + "'");
     var tr = fileToRow(file);
     $("#listing").find("tbody").append(tr);
-    tr.effect("highlight", {}, 500);    
+    tr.effect("highlight", {}, 500);
   }).fail(handleError);
   return false;
 }
@@ -418,8 +419,13 @@ function noop(event) {
   event.preventDefault();
 }
 
-function setStatus(status) {
-  $("#status").html(status).effect("highlight", {}, 500);
+function setStatus(status, ongoing) {
+  var s = $("#status span").html(status).effect("highlight", {}, 500);
+  if (ongoing) {
+    s.addClass("ongoing");
+  } else {
+    s.removeClass("ongoing");
+  }
 }
 
 function uploadNextFile(xhrs) {
@@ -456,12 +462,11 @@ function onFilesToUpload(event) {
     }
     var td = tr.find('td.file-name');
     td.find('button').remove();
-    var status = $('<span>').addClass('status').html('Pending Upload');
+    var status = $('<span>').addClass('status').addClass('ongoing').html('Pending Upload');
     td.append(status);
-    td.append($('<img>').attr('src', '/images/ajax-loader.gif').addClass('ajax-loader'));
     var progressBar = $('<div>').addClass('progress-bar').width('35%').height('1em').progressbar();
     td.append(progressBar);
-    status.html("Uploading " + file.name + " ...");
+    status.html("Uploading ...");
     var formData = new FormData();
     formData.append("file", file);
 
@@ -485,7 +490,7 @@ function onFilesToUpload(event) {
     xhr.addEventListener("load", function(event) {
       var f = JSON.parse(event.target.responseText);
       this.mstate.tr.replaceWith(fileToRow(f));
-      setStatus("Uploaded " + f.name);
+      setStatus("Uploaded '" + f.name + "'");
       uploadNextFile(xhrs);
     }, false);
     xhr.addEventListener("error", function(event) {
@@ -499,7 +504,7 @@ function onFilesToUpload(event) {
     }, false);
     xhrs.push(xhr);
   }
-  uploadNextFile(xhrs);
+  uploadNextFile(xhrs.reverse());
 }
 
 function setupDragAndDrop(container, dropFunction) {
@@ -537,7 +542,8 @@ function selectFilesFor(action) {
       action : action,
       paths : paths
     }));
-    setStatus("Selected " + filenames.length + " " + (filenames.length === 1 ? "file" : "files")
+    setStatus("Selected " + filenames.length + " "
+        + (filenames.length === 1 ? "file/directory" : "files/directories")
         + ". Go to folder of your choice and click on 'Paste' to complete the " + action
         + " operation.");
     clearFilenameSelection();
@@ -564,7 +570,7 @@ function handlePaste() {
   if (source) {
     source = JSON.parse(source);
     setEnabledStatusOnPasteButton(false);
-    handleSinglePaste(source.action, source.paths);
+    handleSinglePaste(source.action, source.paths.reverse());
     clearSelectedFiles();
   }
 }
@@ -573,7 +579,7 @@ function handleSinglePaste(action, paths) {
   var path = paths.pop();
   if (path) {
     log("Executing " + action + " on " + path);
-    setStatus((action === 'copy' ? "Copying" : "Moving") + " '" + file.name + "' ...");
+    setStatus((action === 'copy' ? "Copying" : "Moving") + " '" + file.name + "' ...", true);
     $.ajax({
       url : window.location.pathname,
       type : "POST",

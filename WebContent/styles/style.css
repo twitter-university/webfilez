@@ -219,3 +219,8 @@ table#listing tbody tr:HOVER .inline-button {
 	width: 99%;
 	height: 100%;
 }
+
+.ongoing {
+	padding-right: 20px;
+	background: url('/images/ajax-loader.gif') no-repeat right;
+}

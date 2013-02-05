@@ -17,7 +17,7 @@
 </head>
 <body>
   <h1>Listing...</h1>
-  <div id="status">&nbsp;</div>
+  <div id="status"><span></span></div>
   <form id="form" action="" method="post">
     <div id="toolbar">
       <button id="refresh_button" type="button" class="button">Refresh</button>
