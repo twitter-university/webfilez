@@ -92,26 +92,26 @@ public final class WebFilezServlet extends HttpServlet {
 			try {
 				final Params params = asParams((Context) ctx
 						.lookup("java:comp/env/"));
-				this.inputBufferSize = params.getInteger("inputBufferSize",
+				this.inputBufferSize = params.getInteger("input-buffer-size",
 						2048);
-				this.outputBufferSize = params.getInteger("outputBufferSize",
+				this.outputBufferSize = params.getInteger("output-buffer-size",
 						2048);
-				this.directoryMimeType = params.getString("directoryMimeType",
-						"x-directory/normal");
-				this.defaultMimeType = params.getString("defaultMimeType",
+				this.directoryMimeType = params.getString(
+						"directory-mime-type", "x-directory/normal");
+				this.defaultMimeType = params.getString("default-mime-type",
 						"application/octet-stream");
-				this.readmeFileName = params.getString("readmeFileName",
+				this.readmeFileName = params.getString("readme-file-name",
 						"README.html");
 				this.readmeFileMaxLength = params.getInteger(
-						"readmeFileMaxLength", 5 * 1024 * 1024);
+						"readme-file-max-length", 5 * 1024 * 1024);
 				this.readmeFileCharset = Charset.forName(params.getString(
-						"readmeFileCharset", "UTF-8"));
-				String rootDir = params.getString("rootDir");
+						"readme-file-charset", "UTF-8"));
+				String rootDir = params.getString("root-dir");
 				this.rootDir = rootDir == null ? new File(super
 						.getServletContext().getRealPath(".")) : new File(
 						rootDir);
 				this.rewriteRules = SearchAndReplace.parse(params
-						.getString("rewriteRules"));
+						.getString("rewrite-rules"));
 
 			} finally {
 				ctx.close();

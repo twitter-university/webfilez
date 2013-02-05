@@ -1,6 +1,15 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE Context>
 <Context>
-  <Environment name="auth-key" value="changeit" type="java.lang.String"/>
-  <Environment name="auth-url" value="https://marakana.com/urlauth?authUrl=" type="java.lang.String"/>
+	<Environment name="auth-key"
+		value="changeit" type="java.lang.String" />
+	<Environment name="auth-url"
+		value="https://marakana.com/urlauth?authUrl=" type="java.lang.String" />
+	<Environment name="root-dir"
+		value="/set/this/path/to/the/root/of/files/" type="java.lang.String" />
+	<Environment name="rewrite-rules" type="java.lang.String" value="
+		^/([^/]+)/(\d*(\d)(\d)(\d))/files/(.*) /$1/$5/$4/$3/$2/files/$6
+		^/([^/]+)/((\d)(\d))/files/(.*) /$1/$4/$3/0/$2/files/$5
+		^/([^/]+)/(\d)/files/(.*) /$1/$2/0/0/$2/files/$3
+		"/>
 </Context>

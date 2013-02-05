@@ -23,55 +23,45 @@
 	</env-entry>
 
 	<env-entry>
-		<env-entry-name>inputBufferSize</env-entry-name>
+		<env-entry-name>input-buffer-size</env-entry-name>
 		<env-entry-type>java.lang.Integer</env-entry-type>
 		<env-entry-value>2048</env-entry-value>
 	</env-entry>
 
 	<env-entry>
-		<env-entry-name>outputBufferSize</env-entry-name>
+		<env-entry-name>output-buffer-size</env-entry-name>
 		<env-entry-type>java.lang.Integer</env-entry-type>
 		<env-entry-value>2048</env-entry-value>
 	</env-entry>
 
 	<env-entry>
-		<env-entry-name>directoryMimeType</env-entry-name>
+		<env-entry-name>directory-mime-type</env-entry-name>
 		<env-entry-type>java.lang.String</env-entry-type>
 		<env-entry-value>x-directory/normal</env-entry-value>
 	</env-entry>
 
 	<env-entry>
-		<env-entry-name>defaultMimeType</env-entry-name>
+		<env-entry-name>default-mime-type</env-entry-name>
 		<env-entry-type>java.lang.String</env-entry-type>
 		<env-entry-value>application/octet-stream</env-entry-value>
 	</env-entry>
 
 	<env-entry>
-		<env-entry-name>readmeFileName</env-entry-name>
+		<env-entry-name>readme-file-name</env-entry-name>
 		<env-entry-type>java.lang.String</env-entry-type>
 		<env-entry-value>README.html</env-entry-value>
 	</env-entry>
 
 	<env-entry>
-		<env-entry-name>readmeFileMaxLength</env-entry-name>
+		<env-entry-name>readme-file-max-length</env-entry-name>
 		<env-entry-type>java.lang.Integer</env-entry-type>
 		<env-entry-value>5242880</env-entry-value>
 	</env-entry>
 
 	<env-entry>
-		<env-entry-name>rootDir</env-entry-name>
+		<env-entry-name>readme-file-charset</env-entry-name>
 		<env-entry-type>java.lang.String</env-entry-type>
-		<env-entry-value>/srv/www/marakana/files.marakana.com/files/</env-entry-value>
-	</env-entry>
-
-	<env-entry>
-		<env-entry-name>rewriteRules</env-entry-name>
-		<env-entry-type>java.lang.String</env-entry-type>
-		<env-entry-value>
-		  ^/([^/]+)/(\d*(\d)(\d)(\d))/files/(.*) /$1/$5/$4/$3/$2/files/$6
-		  ^/([^/]+)/((\d)(\d))/files/(.*) /$1/$4/$3/0/$2/files/$5
-		  ^/([^/]+)/(\d)/files/(.*) /$1/$2/0/0/$2/files/$3
-		</env-entry-value>
+		<env-entry-value>UTF-8</env-entry-value>
 	</env-entry>
 
 	<filter>
