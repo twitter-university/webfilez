@@ -1,8 +1,10 @@
 package com.marakana.webfilez;
 
-import static com.marakana.webauthz.WebAuthz.Access.READ;
-import static com.marakana.webauthz.WebAuthz.Access.WRITE;
+import static com.marakana.webauthz.Access.READ;
+import static com.marakana.webauthz.Access.WRITE;
+import static com.marakana.webfilez.WebUtil.ALLOWED_METHODS_HEADER;
 import static com.marakana.webfilez.WebUtil.asParams;
+import static com.marakana.webfilez.WebUtil.isAjax;
 import static com.marakana.webfilez.WebUtil.isRead;
 import static com.marakana.webfilez.WebUtil.isWrite;
 
@@ -25,8 +27,8 @@ import javax.servlet.http.HttpServletResponse;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.marakana.webauthz.Access;
 import com.marakana.webauthz.WebAuthz;
-import com.marakana.webauthz.WebAuthz.Access;
 
 public class AuthFilter implements Filter {
 
@@ -127,7 +129,7 @@ public class AuthFilter implements Filter {
 										httpRequest.getRequestURI()));
 					}
 					httpResponse.setHeader("Allow",
-							WebUtil.ALLOWED_METHODS_HEADER);
+							ALLOWED_METHODS_HEADER);
 					httpResponse
 							.setStatus(HttpServletResponse.SC_METHOD_NOT_ALLOWED);
 				} else if (!actualPath.startsWith(auth.getBasePath())
@@ -235,7 +237,7 @@ public class AuthFilter implements Filter {
 		String authUrl = this.authUrl
 				+ URLEncoder.encode(requestUrlBuffer.toString(), "UTF-8");
 
-		if (WebUtil.isAjax(request)) {
+		if (isAjax(request)) {
 			if (logger.isDebugEnabled()) {
 				logger.debug("Refusing JavaScript request from ["
 						+ request.getRemoteAddr() + "] to [" + requestUrl
