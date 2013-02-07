@@ -121,10 +121,10 @@ public class AuthFilter implements Filter {
 				if (!isRead && !isWrite) {
 					if (logger.isWarnEnabled()) {
 						logger.warn(String
-								.format("Unsupported %s request from %s %s <%s> (%s) to access %s",
+								.format("Unsupported %s request from user #%d (%s) to access %s",
 										httpRequest.getMethod(),
-										auth.getFirstName(),
-										auth.getLastName(), auth.getEmail(),
+										auth.getUserId(),
+										auth.getUserDescription(),
 										httpRequest.getRemoteAddr(),
 										httpRequest.getRequestURI()));
 					}
@@ -142,10 +142,10 @@ public class AuthFilter implements Filter {
 						|| (isWrite && !auth.getAccess().contains(WRITE))) {
 					if (logger.isWarnEnabled()) {
 						logger.warn(String
-								.format("Unauthorized %s request from %s %s <%s> (%s) to access %s. Removing cookie and refusing request.",
+								.format("Unauthorized %s request from user #%d (%s) to access %s. Removing cookie and refusing request.",
 										httpRequest.getMethod(),
-										auth.getFirstName(),
-										auth.getLastName(), auth.getEmail(),
+										auth.getUserId(),
+										auth.getUserDescription(),
 										httpRequest.getRemoteAddr(),
 										httpRequest.getRequestURI()));
 					}
@@ -168,14 +168,13 @@ public class AuthFilter implements Filter {
 						if (cookieSet ? logger.isTraceEnabled() : logger
 								.isDebugEnabled()) {
 							String msg = String
-									.format("Authorized [%s %s] request for [%s] from [%s %s] <%s> at [%s]",
+									.format("Authorized user #%d (%s) from %s to %s %s for %s",
+											auth.getUserId(),
+											auth.getUserDescription(),
+											httpRequest.getRemoteAddr(),
 											httpRequest.getMethod(),
 											actualPath,
-											httpRequest.getHeader("Accept"),
-											auth.getFirstName(),
-											auth.getLastName(),
-											auth.getEmail(),
-											httpRequest.getRemoteAddr());
+											httpRequest.getHeader("Accept"));
 							if (cookieSet) {
 								logger.trace(msg);
 							} else {
