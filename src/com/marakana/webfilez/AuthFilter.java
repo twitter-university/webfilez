@@ -128,8 +128,7 @@ public class AuthFilter implements Filter {
 										httpRequest.getRemoteAddr(),
 										httpRequest.getRequestURI()));
 					}
-					httpResponse.setHeader("Allow",
-							ALLOWED_METHODS_HEADER);
+					httpResponse.setHeader("Allow", ALLOWED_METHODS_HEADER);
 					httpResponse
 							.setStatus(HttpServletResponse.SC_METHOD_NOT_ALLOWED);
 				} else if (!actualPath.startsWith(auth.getBasePath())
@@ -159,6 +158,9 @@ public class AuthFilter implements Filter {
 					if (cookieSet) {
 						httpRequest.setAttribute(Constants.BASE_DIR_ATTR_NAME,
 								auth.getBasePath());
+						httpRequest.setAttribute(
+								Constants.DESCRIPTION_ATTR_NAME,
+								auth.getDescription());
 						httpRequest.setAttribute(Constants.READ_ALLOWED, auth
 								.getAccess().contains(Access.READ));
 						httpRequest.setAttribute(Constants.WRITE_ALLOWED, auth

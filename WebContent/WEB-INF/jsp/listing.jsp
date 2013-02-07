@@ -17,6 +17,7 @@
 </head>
 <body>
   <h1>Listing...</h1>
+  <div id="description">${description}</div>
   <div id="status"><span></span></div>
   <form id="form" action="" method="post">
     <div id="toolbar">
