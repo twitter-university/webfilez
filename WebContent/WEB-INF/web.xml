@@ -1,142 +1,130 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<web-app xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-	xmlns="http://java.sun.com/xml/ns/javaee" xmlns:web="http://java.sun.com/xml/ns/javaee/web-app_2_5.xsd"
-	xsi:schemaLocation="http://java.sun.com/xml/ns/javaee http://java.sun.com/xml/ns/javaee/web-app_3_0.xsd"
-	id="WebApp_ID" version="3.0">
+<web-app xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns="http://java.sun.com/xml/ns/javaee" xmlns:web="http://java.sun.com/xml/ns/javaee/web-app_2_5.xsd"
+  xsi:schemaLocation="http://java.sun.com/xml/ns/javaee http://java.sun.com/xml/ns/javaee/web-app_3_0.xsd" id="WebApp_ID" version="3.0">
 
-	<display-name>webfilez</display-name>
+  <display-name>webfilez</display-name>
 
-	<welcome-file-list>
-		<welcome-file>webfilez-welcome-file.html</welcome-file>
-	</welcome-file-list>
+  <welcome-file-list>
+    <welcome-file>webfilez-welcome-file.html</welcome-file>
+  </welcome-file-list>
 
-	<env-entry>
-		<env-entry-name>auth-token-name</env-entry-name>
-		<env-entry-type>java.lang.String</env-entry-type>
-		<env-entry-value>auth</env-entry-value>
-	</env-entry>
+  <env-entry>
+    <env-entry-name>auth-token-name</env-entry-name>
+    <env-entry-type>java.lang.String</env-entry-type>
+    <env-entry-value>auth</env-entry-value>
+  </env-entry>
 
-	<env-entry>
-		<env-entry-name>authorization-header-type</env-entry-name>
-		<env-entry-type>java.lang.String</env-entry-type>
-		<env-entry-value>mrknauth</env-entry-value>
-	</env-entry>
+  <env-entry>
+    <env-entry-name>authorization-header-type</env-entry-name>
+    <env-entry-type>java.lang.String</env-entry-type>
+    <env-entry-value>mrknauth</env-entry-value>
+  </env-entry>
 
-	<env-entry>
-		<env-entry-name>input-buffer-size</env-entry-name>
-		<env-entry-type>java.lang.Integer</env-entry-type>
-		<env-entry-value>2048</env-entry-value>
-	</env-entry>
+  <env-entry>
+    <env-entry-name>input-buffer-size</env-entry-name>
+    <env-entry-type>java.lang.Integer</env-entry-type>
+    <env-entry-value>2048</env-entry-value>
+  </env-entry>
 
-	<env-entry>
-		<env-entry-name>output-buffer-size</env-entry-name>
-		<env-entry-type>java.lang.Integer</env-entry-type>
-		<env-entry-value>2048</env-entry-value>
-	</env-entry>
+  <env-entry>
+    <env-entry-name>output-buffer-size</env-entry-name>
+    <env-entry-type>java.lang.Integer</env-entry-type>
+    <env-entry-value>2048</env-entry-value>
+  </env-entry>
 
-	<env-entry>
-		<env-entry-name>directory-mime-type</env-entry-name>
-		<env-entry-type>java.lang.String</env-entry-type>
-		<env-entry-value>x-directory/normal</env-entry-value>
-	</env-entry>
+  <env-entry>
+    <env-entry-name>directory-mime-type</env-entry-name>
+    <env-entry-type>java.lang.String</env-entry-type>
+    <env-entry-value>x-directory/normal</env-entry-value>
+  </env-entry>
 
-	<env-entry>
-		<env-entry-name>default-mime-type</env-entry-name>
-		<env-entry-type>java.lang.String</env-entry-type>
-		<env-entry-value>application/octet-stream</env-entry-value>
-	</env-entry>
+  <env-entry>
+    <env-entry-name>default-mime-type</env-entry-name>
+    <env-entry-type>java.lang.String</env-entry-type>
+    <env-entry-value>application/octet-stream</env-entry-value>
+  </env-entry>
 
-	<env-entry>
-		<env-entry-name>readme-file-name</env-entry-name>
-		<env-entry-type>java.lang.String</env-entry-type>
-		<env-entry-value>README.html</env-entry-value>
-	</env-entry>
+  <env-entry>
+    <env-entry-name>readme-file-name</env-entry-name>
+    <env-entry-type>java.lang.String</env-entry-type>
+    <env-entry-value>README.html</env-entry-value>
+  </env-entry>
 
-	<env-entry>
-		<env-entry-name>readme-file-max-length</env-entry-name>
-		<env-entry-type>java.lang.Integer</env-entry-type>
-		<env-entry-value>5242880</env-entry-value>
-	</env-entry>
+  <env-entry>
+    <env-entry-name>readme-file-max-length</env-entry-name>
+    <env-entry-type>java.lang.Integer</env-entry-type>
+    <env-entry-value>5242880</env-entry-value>
+  </env-entry>
 
-	<env-entry>
-		<env-entry-name>readme-file-charset</env-entry-name>
-		<env-entry-type>java.lang.String</env-entry-type>
-		<env-entry-value>UTF-8</env-entry-value>
-	</env-entry>
+  <env-entry>
+    <env-entry-name>readme-file-charset</env-entry-name>
+    <env-entry-type>java.lang.String</env-entry-type>
+    <env-entry-value>UTF-8</env-entry-value>
+  </env-entry>
 
-	<filter>
-		<filter-name>HttpMethodSupportFilter</filter-name>
-		<filter-class>com.marakana.webfilez.HttpMethodSupportFilter</filter-class>
-	</filter>
+  <filter>
+    <filter-name>HttpMethodSupportFilter</filter-name>
+    <filter-class>com.marakana.webfilez.HttpMethodSupportFilter</filter-class>
+  </filter>
 
-	<filter>
-		<filter-name>AuthFilter</filter-name>
-		<filter-class>com.marakana.webfilez.AuthFilter</filter-class>
-	</filter>
+  <filter>
+    <filter-name>AuthFilter</filter-name>
+    <filter-class>com.marakana.webfilez.AuthFilter</filter-class>
+  </filter>
 
-	<filter-mapping>
-		<filter-name>HttpMethodSupportFilter</filter-name>
-		<url-pattern>/class/*</url-pattern>
-		<url-pattern>/course/*</url-pattern>
-		<url-pattern>/user/*</url-pattern>
-		<url-pattern>/static/*</url-pattern>
-		<url-pattern>/files/*</url-pattern>
-	</filter-mapping>
+  <filter-mapping>
+    <filter-name>HttpMethodSupportFilter</filter-name>
+    <url-pattern>/class/*</url-pattern>
+    <url-pattern>/course/*</url-pattern>
+    <url-pattern>/user/*</url-pattern>
+    <url-pattern>/static/*</url-pattern>
+    <url-pattern>/files/*</url-pattern>
+  </filter-mapping>
 
-	<filter-mapping>
-		<filter-name>AuthFilter</filter-name>
-		<url-pattern>/class/*</url-pattern>
-		<url-pattern>/course/*</url-pattern>
-		<url-pattern>/user/*</url-pattern>
-		<url-pattern>/static/*</url-pattern>
-		<url-pattern>/files/*</url-pattern>
-	</filter-mapping>
+  <filter-mapping>
+    <filter-name>AuthFilter</filter-name>
+    <url-pattern>/class/*</url-pattern>
+    <url-pattern>/course/*</url-pattern>
+    <url-pattern>/user/*</url-pattern>
+    <url-pattern>/static/*</url-pattern>
+    <url-pattern>/files/*</url-pattern>
+  </filter-mapping>
 
-	<servlet>
-		<servlet-name>WebFilezServlet</servlet-name>
-		<servlet-class>com.marakana.webfilez.WebFilezServlet</servlet-class>
-		<multipart-config>
-			<file-size-threshold>5242880</file-size-threshold>
-		</multipart-config>
-	</servlet>
+  <servlet>
+    <servlet-name>WebFilezServlet</servlet-name>
+    <servlet-class>com.marakana.webfilez.WebFilezServlet</servlet-class>
+    <multipart-config>
+      <file-size-threshold>5242880</file-size-threshold>
+    </multipart-config>
+  </servlet>
 
-	<servlet-mapping>
-		<servlet-name>WebFilezServlet</servlet-name>
-		<url-pattern>/class/*</url-pattern>
-		<url-pattern>/course/*</url-pattern>
-		<url-pattern>/user/*</url-pattern>
-		<url-pattern>/static/*</url-pattern>
-		<url-pattern>/files/*</url-pattern>
-	</servlet-mapping>
+  <servlet-mapping>
+    <servlet-name>WebFilezServlet</servlet-name>
+    <url-pattern>/class/*</url-pattern>
+    <url-pattern>/course/*</url-pattern>
+    <url-pattern>/user/*</url-pattern>
+    <url-pattern>/static/*</url-pattern>
+    <url-pattern>/files/*</url-pattern>
+  </servlet-mapping>
 
-	<error-page>
-		<error-code>401</error-code>
-		<location>/error/401.html</location>
-	</error-page>
+  <error-page>
+    <error-code>401</error-code>
+    <location>/error/401.html</location>
+  </error-page>
 
-	<error-page>
-		<error-code>403</error-code>
-		<location>/error/403.html</location>
-	</error-page>
+  <error-page>
+    <error-code>403</error-code>
+    <location>/error/403.html</location>
+  </error-page>
 
-	<error-page>
-		<error-code>404</error-code>
-		<location>/error/404.html</location>
-	</error-page>
+  <error-page>
+    <error-code>404</error-code>
+    <location>/error/404.html</location>
+  </error-page>
 
-	<error-page>
-		<error-code>500</error-code>
-		<location>/error/500.html</location>
-	</error-page>
+  <error-page>
+    <error-code>500</error-code>
+    <location>/error/500.html</location>
+  </error-page>
 
-	<!-- TODO: switch to SSL? -->
-	<security-constraint>
-		<web-resource-collection>
-			<web-resource-name>All</web-resource-name>
-			<url-pattern>/*</url-pattern>
-		</web-resource-collection>
-		<user-data-constraint>
-			<transport-guarantee>NONE</transport-guarantee>
-		</user-data-constraint>
-	</security-constraint>
 </web-app>
