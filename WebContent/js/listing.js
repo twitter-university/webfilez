@@ -388,6 +388,10 @@ function getSelectedFileNames() {
   }).get();
 }
 
+function hasSelectedFileNames() {
+  return $('td.file-select input:checkbox:checked').length > 0;
+}
+
 function setEnabledStatus(element, enabled) {
   if (enabled) {
     element.removeAttr("disabled");
@@ -583,7 +587,7 @@ function handleSinglePaste(action, paths) {
   var path = paths.pop();
   if (path) {
     log("Executing " + action + " on " + path);
-    setStatus((action === 'copy' ? "Copying" : "Moving") + " '" + file.name + "' ...", true);
+    setStatus((action === 'copy' ? "Copying" : "Moving") + " '" + path + "' ...", true);
     $.ajax({
       url : window.location.pathname,
       type : "POST",
@@ -640,7 +644,7 @@ var doPop = false;
 
 $(document).ready(function() {
   $(document).on("click", ".file-select input[type='checkbox']", function() {
-    setEnabledStatusOnActionButtons(this.checked);
+    setEnabledStatusOnActionButtons(this.checked || hasSelectedFileNames());
   });
 
   $("th.file-select input[type='checkbox']").click(function() {
