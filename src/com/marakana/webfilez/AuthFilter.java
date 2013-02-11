@@ -216,6 +216,7 @@ public class AuthFilter implements Filter {
 	private static Cookie buildCookie(String tokenName, String authToken,
 			String basePath, int maxAge) {
 		Cookie cookie = new Cookie(tokenName, authToken);
+		cookie.setHttpOnly(true);
 		cookie.setPath(basePath);
 		cookie.setMaxAge(maxAge);
 		return cookie;
