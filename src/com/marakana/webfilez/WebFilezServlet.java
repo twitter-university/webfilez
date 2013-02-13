@@ -191,25 +191,27 @@ public final class WebFilezServlet extends HttpServlet {
 						logger.debug("Trying to see if [" + uri + "] exists.");
 					}
 				}
-			}
-			if (uri != null) {
-				if (uri.equals(basePath)) {
-					this.sendServerFailure(request, response,
-							"Failed to access/create " + file.getAbsolutePath());
-				} else {
-					if (logger.isDebugEnabled()) {
-						logger.debug("Attempting to recover. Redirecting to: "
-								+ uri);
+				if (uri != null) {
+					if (uri.equals(basePath)) {
+						this.sendServerFailure(
+								request,
+								response,
+								"Failed to access/create "
+										+ file.getAbsolutePath());
+					} else {
+						if (logger.isDebugEnabled()) {
+							logger.debug("Attempting to recover. Redirecting to: "
+									+ uri);
+						}
+						response.sendRedirect(uri);
 					}
-					response.sendRedirect(uri);
+					return;
 				}
-			} else {
-				this.refuseRequest(request, response,
-						HttpServletResponse.SC_NOT_FOUND, "No such file ["
-								+ file.getAbsolutePath() + "] in response to ["
-								+ uri + "]");
 			}
-
+			this.refuseRequest(request, response,
+					HttpServletResponse.SC_NOT_FOUND,
+					"No such file [" + file.getAbsolutePath()
+							+ "] in response to [" + uri + "]");
 		}
 	}
 
