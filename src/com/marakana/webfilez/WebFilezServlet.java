@@ -181,12 +181,15 @@ public final class WebFilezServlet extends HttpServlet {
 								+ "] in response to [" + uri + "]");
 			}
 		} else {
-			// search for the closest folder that does exist
-			// until we get to directory root
-			for (; !file.equals(this.rootDir) && !file.exists() && uri != null
-					&& !uri.equals(basePath); file = file.getParentFile(), uri = getParentUriPath(uri)) {
-				if (logger.isDebugEnabled()) {
-					logger.debug("Trying to see if [" + uri + "] exists.");
+			if (!isHead(request)) {
+				// search for the closest folder that does exist
+				// until we get to directory root
+				for (; !file.equals(this.rootDir) && !file.exists()
+						&& uri != null && !uri.equals(basePath); file = file
+						.getParentFile(), uri = getParentUriPath(uri)) {
+					if (logger.isDebugEnabled()) {
+						logger.debug("Trying to see if [" + uri + "] exists.");
+					}
 				}
 			}
 			if (uri != null) {
