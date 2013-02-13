@@ -116,11 +116,13 @@ public class FileUtil {
 				for (File file : source.listFiles()) {
 					copy(file, new File(destination, file.getName()));
 				}
+				destination.setLastModified(source.lastModified());
 			}
 		} else {
 			try (FileInputStream in = new FileInputStream(source);
 					FileOutputStream out = new FileOutputStream(destination);) {
 				copy(in, out);
+				destination.setLastModified(source.lastModified());
 			}
 		}
 	}
