@@ -456,68 +456,100 @@ public final class WebFilezServlet extends HttpServlet {
 			HttpServletResponse response, File dir, String basePath)
 			throws IOException, ServletException, JSONException {
 		final String uri = request.getRequestURI();
+		final long lastModified = dir.lastModified();
+		// TODO, we should probably find the most up-to-date file and use it for
+		// last-modified???
+		if (lastModified >= 0) {
+			response.setDateHeader("Last-Modified", lastModified);
+		}
 		setNoCacheHeaders(response);
-		if (isJson(request)) {
+		if (isHead(request)) {
+			response.setHeader("ETag", generateETag(size(dir), lastModified));
+		} else if (isJson(request)) {
 			if (logger.isTraceEnabled()) {
 				logger.trace("Listing files in [" + dir.getAbsolutePath() + "]");
 			}
-			response.setContentType("application/json");
-			response.setHeader("Accept-Ranges", "none");
-			long totalSize = 0;
-			File readmeFile = null;
-			final JSONWriter jsonWriter = new JSONWriter(response.getWriter());
-			jsonWriter.object();
-			jsonWriter.key("files").array();
 			File[] files = dir.listFiles();
-			for (File f : files) {
-				totalSize += writeFileInfoToJson(f, jsonWriter);
-				if (f.getName().equals(this.readmeFileName)) {
-					readmeFile = f;
-				}
-			}
-			jsonWriter.endArray();
-			jsonWriter.key("uri").value(uri);
-			jsonWriter.key("name").value(dir.getName());
-			jsonWriter.key("type").value(this.directoryMimeType);
-			jsonWriter.key("size").value(totalSize);
-			jsonWriter.key("lastModified").value(dir.lastModified());
-			jsonWriter.key("writeAllowed").value(this.getWriteAllowed(request));
-			if (uri.length() > basePath.length() && uri.startsWith(basePath)) {
-				jsonWriter.key("parent").value(getParentUriPath(uri));
+			if (files == null) {
+				this.sendServerFailure(
+						request,
+						response,
+						"Failed to list files in directory: "
+								+ dir.getAbsolutePath());
 			} else {
-				if (logger.isTraceEnabled()) {
-					logger.trace("No parent present for uri [" + uri
-							+ "] and basePath [" + basePath + "]");
+				response.setContentType("application/json");
+				response.setHeader("Accept-Ranges", "none");
+				final int bufferSize = 1024 + files.length * 110;
+				response.setBufferSize(bufferSize);
+				long totalSize = 0;
+				File readmeFile = null;
+				final JSONWriter jsonWriter = new JSONWriter(
+						response.getWriter());
+				jsonWriter.object();
+				jsonWriter.key("files").array();
+
+				for (File f : files) {
+					totalSize += writeFileInfoToJson(f, jsonWriter);
+					if (f.getName().equals(this.readmeFileName)) {
+						readmeFile = f;
+					}
 				}
-			}
-			if (readmeFile != null) {
-				if (readmeFile.length() > this.readmeFileMaxLength) {
+				jsonWriter.endArray();
+				if (response.isCommitted()) {
 					if (logger.isWarnEnabled()) {
-						logger.warn("README file ["
-								+ readmeFile.getAbsolutePath() + "] size ["
-								+ readmeFile.length() + "] exceeds max size ["
-								+ this.readmeFileMaxLength + "]. Ignoring.");
+						logger.warn("Cannot send ETag, because the response with buffer size ["
+								+ bufferSize + "] has already been committed ");
 					}
 				} else {
-					try {
-						final String readme = FileUtil.readFileToString(
-								readmeFile, this.readmeFileCharset);
-						jsonWriter.key("readme").value(readme);
-					} catch (IOException e) {
-						if (logger.isWarnEnabled()) {
-							logger.warn("Failed to read the README file ["
-									+ readmeFile.getAbsolutePath()
-									+ "]. Ignoring.", e);
-						}
+					response.setHeader("ETag",
+							generateETag(totalSize, lastModified));
+				}
+				jsonWriter.key("uri").value(uri);
+				jsonWriter.key("name").value(dir.getName());
+				jsonWriter.key("type").value(this.directoryMimeType);
+				jsonWriter.key("size").value(totalSize);
+				jsonWriter.key("lastModified").value(dir.lastModified());
+				jsonWriter.key("writeAllowed").value(
+						this.getWriteAllowed(request));
+				if (uri.length() > basePath.length()
+						&& uri.startsWith(basePath)) {
+					jsonWriter.key("parent").value(getParentUriPath(uri));
+				} else {
+					if (logger.isTraceEnabled()) {
+						logger.trace("No parent present for uri [" + uri
+								+ "] and basePath [" + basePath + "]");
 					}
 				}
-			} else {
-				if (logger.isTraceEnabled()) {
-					logger.trace("No README file present for uri [" + uri
-							+ "] and dir [" + dir.getAbsolutePath() + "]");
+				if (readmeFile != null) {
+					if (readmeFile.length() > this.readmeFileMaxLength) {
+						if (logger.isWarnEnabled()) {
+							logger.warn("README file ["
+									+ readmeFile.getAbsolutePath() + "] size ["
+									+ readmeFile.length()
+									+ "] exceeds max size ["
+									+ this.readmeFileMaxLength + "]. Ignoring.");
+						}
+					} else {
+						try {
+							final String readme = FileUtil.readFileToString(
+									readmeFile, this.readmeFileCharset);
+							jsonWriter.key("readme").value(readme);
+						} catch (IOException e) {
+							if (logger.isWarnEnabled()) {
+								logger.warn("Failed to read the README file ["
+										+ readmeFile.getAbsolutePath()
+										+ "]. Ignoring.", e);
+							}
+						}
+					}
+				} else {
+					if (logger.isTraceEnabled()) {
+						logger.trace("No README file present for uri [" + uri
+								+ "] and dir [" + dir.getAbsolutePath() + "]");
+					}
 				}
+				jsonWriter.endObject();
 			}
-			jsonWriter.endObject();
 		} else {
 			if (logger.isTraceEnabled()) {
 				logger.trace("Sending HTML for listing ["
