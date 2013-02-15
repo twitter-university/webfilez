@@ -436,83 +436,159 @@ function setStatus(status, ongoing) {
   }
 }
 
-function uploadNextFile(xhrs) {
-  var xhr = xhrs.pop();
-  if (xhr) {
-    log("Executing upload for " + xhr.mstate.uri);
-    xhr.open("PUT", xhr.mstate.uri, true);
-    xhr.send(xhr.mstate.formData);
-  } else {
-    log("No more xhrs to execute");
+
+function prepareToUploadFileItemToPath(tbody, item, path) {
+  path = path || "";
+  if (item.isFile) {
+    item.file(function(file) {
+      prepareToUploadFileToPath(tbody, file, path + file.name);
+    });
+  } else if (item.isDirectory) {
+    item.createReader().readEntries(function(entries) {
+      for (var i = 0; i < entries.length; i++) {
+        prepareToUploadFileItemToPath(tbody, entries[i], path + item.name + "/");
+      }
+    });
   }
 }
 
-function onFilesToUpload(event) {
-  var files = event.dataTransfer.files;
-  var tbody = $("#listing tbody");
-  var xhrs = new Array();
-  for ( var i = 0; i < files.length; i++) {
-    var xhr = new XMLHttpRequest();
-    var file = files[i];
-    var newTr = fileToRow({
-      name : file.name,
-      size : file.size,
-      type : file.type,
-      lastModified : file.lastModifiedDate
-    });
-    var tr = getRowForFilename(file.name);
-    if (tr) {
-      tr.replaceWith(newTr);
-      tr = newTr;
-    } else {
-      tr = newTr;
-      tbody.append(tr);
-    }
-    var td = tr.find('td.file-name');
-    td.find('button').remove();
-    var status = $('<span>').addClass('status').addClass('ongoing').html('Pending Upload');
-    td.append(status);
-    var progressBar = $('<div>').addClass('progress-bar').width('35%').height('1em').progressbar();
-    td.append(progressBar);
-    status.html("Uploading ...");
-    var formData = new FormData();
-    formData.append("file", file);
-
-    xhr.mstate = {
-      uri : toUri(file.name),
-      file : file,
-      tr : tr,
-      td : td,
-      status : status,
-      progressBar : progressBar,
-      formData : formData
-    };
-
-    xhr.upload.addEventListener("progress", function(event) {
-      if (event.lengthComputable) {
-        var progress = Math.round(event.loaded / event.total * 100);
-        this.mstate.progressBar.progressbar("value", progress);
-      }
-    }, false);
-    xhr.upload.mstate = xhr.mstate;
-    xhr.addEventListener("load", function(event) {
-      var f = JSON.parse(event.target.responseText);
-      this.mstate.tr.replaceWith(fileToRow(f));
-      setStatus("Uploaded '" + f.name + "'");
-      uploadNextFile(xhrs);
-    }, false);
-    xhr.addEventListener("error", function(event) {
-      setStatus("There was an error attempting to upload file '" + file.name + "'. Aborting.");
-      this.mstate.tr.remove();
-    }, false);
-    xhr.addEventListener("abort", function(event) {
-      setStatus("The upload of '" + file.name
-          + "' has been canceled or the browser dropped the connection. Aborting.");
-      this.mstate.tr.remove();
-    }, false);
-    xhrs.push(xhr);
+function prepareToUploadFilesToPath(tbody, files) {
+  for (var i = 0; i < files.length; i++) {
+    // TODO: skip files[0].type === "" && files[i].size === 0 ???
+    prepareToUploadFileToPath(tbody, files[i], files[i].name);
   }
-  uploadNextFile(xhrs.reverse());
+}
+
+function prepareToUploadFileToPath(tbody, file, path) {
+  var uri = toUri(path);
+  tbody.find("tr").each(function( index ) {
+    var upload = $(this).data();
+    if (upload && upload.uri === uri) {
+      log("Found previous entiry for [" + upload.uri + "]. Removing!");
+      abortUpload($(this));
+      $(this).remove();
+    }
+  });
+
+  var tr = $('<tr>').addClass('file');
+  var td = $('<td>').addClass('file-name').html(path);
+  td.append($('<button>').addClass('inline-button').attr('type', 'button').html('remove').click(function() {
+    var tr = $(this).closest("tr");
+    abortUpload(tr);
+    tr.remove();
+  }));
+  td.append($("<div>").addClass("status"));
+  tr.append(td);
+  tr.append($('<td>').addClass('file-size').html(addCommas(file.size)));
+  tr.append($('<td>').addClass('file-last-modified-date').html(toDateAndTime(file.lastModifiedDate)));
+  tr.data({
+    file: file,
+    uri : uri
+  });
+  tbody.append(tr);
+}
+
+function uploadRow(tr, numberOfFilesUploaded) {
+  if (!tr || tr.length == 0) {
+    log("Done with upload");
+    var uploadDialog = $("#upload-dialog").dialog("destroy");
+    uploadDialog.find("table tbody").empty();
+    handleRefresh();
+    setStatus("Uploaded " + numberOfFilesUploaded + " file" + (numberOfFilesUploaded === 1? '' : "s"),  false);
+    return;
+  }
+  var upload = tr.data();
+  if (!upload || upload.started) {
+    return;
+  } else {
+    upload.started = true;
+  }
+  var td = tr.find('td.file-name');
+  var button = td.find("button");
+  button.html("Abort");
+  var progressBar = $('<div>').addClass('progress-bar').width('35%').height('1em').progressbar();
+  td.append(progressBar);
+  var status = td.find(".status");
+  
+  log("Uploading "+ upload.file.name + " to " + upload.uri);
+  var xhr = new XMLHttpRequest();
+  xhr.upload.addEventListener("progress", function(event) {
+    if (event.lengthComputable) {
+      progressBar.progressbar("value", Math.round(event.loaded / event.total * 100));
+    }
+  }, false);
+  xhr.addEventListener("load", function(event) {
+    var f = JSON.parse(event.target.responseText);
+    log("Uploaded " + f.name + " as " + upload.uri);
+    progressBar.remove();
+    status.removeClass("pending").addClass("success");
+    tr.data(null);
+    button.html("Remove");
+    uploadRow(tr.next(), numberOfFilesUploaded + 1);
+  }, false);
+  xhr.addEventListener("error", function(event) {
+    log("Error uploading " + upload.uri);
+    progressBar.remove();
+    button.html("Remove");
+    status.removeClass("pending").addClass("failed");
+  }, false);
+  xhr.addEventListener("abort", function(event) {
+    log("Aborted upload of " + upload.uri);
+    progressBar.remove();
+    button.html("Remove");
+    status.removeClass("pending").addClass("aborted");
+  }, false);
+
+  var formData = new FormData();
+  formData.append("file", upload.file);
+  upload.xhr = xhr;
+  xhr.open("PUT", upload.uri, true);
+  xhr.send(formData);
+}
+
+function abortUpload(tr) {
+  var upload = tr.data();
+  if (upload && upload.xhr) {
+    log("Aborting upload of " + upload.uri);
+    upload.xhr.abort();
+  }
+}
+
+function setupUploadDialog() {
+  $("#upload-dialog").dialog({
+    width : Math.round($(window).width() * 0.8),
+    height : 480,
+    modal : true,
+    buttons : {
+      Upload : function() {
+        $(this).dialog("option", "closeOnEscape", false);
+        $("#upload-dialog table tbody tr td.file-name .status").addClass("pending");
+        uploadRow($(this).find("table tbody tr").first(), 0);
+      },
+      Cancel : function() {
+        $(this).find("table tbody tr").each(function() { abortUpload($(this)); });
+        $(this).find("table tbody").empty();
+        $(this).dialog("destroy");
+        handleRefresh();
+      }
+    }
+  });
+}
+
+function onFilesDroppedEvent(event) {
+  setupUploadDialog();
+  var tbody = $("#upload-dialog table tbody");
+  if (event.dataTransfer.items && event.dataTransfer.items.length > 0 && event.dataTransfer.items[0].webkitGetAsEntry) {
+    var items = event.dataTransfer.items;
+    for (var i = 0; i < items.length; i++) {
+      var item = items[i].webkitGetAsEntry();
+      if (item) {
+        prepareToUploadFileItemToPath(tbody, item, "");
+      }
+    }
+  } else {
+    prepareToUploadFilesToPath(tbody, event.dataTransfer.files);
+  }
 }
 
 function setupDragAndDrop(container, dropFunction) {
@@ -552,7 +628,7 @@ function selectFilesFor(action) {
     }));
     setStatus("Selected " + filenames.length + " "
         + (filenames.length === 1 ? "file/directory" : "files/directories")
-        + ". Go to folder of your choice and click on 'Paste' to complete the " + action
+        + ". Go to directory of your choice and click on 'Paste' to complete the " + action
         + " operation.");
     clearFilenameSelection();
     return false;
@@ -662,8 +738,15 @@ $(document).ready(function() {
     $("#cut_button").click(handleCut);
     $("#paste_button").click(handlePaste);
     $("#clear_button").click(handleClear);
+    $("#upload_button").click(setupUploadDialog);
     setEnabledStatusOnPasteButton(hasSelectedFiles());
-    setupDragAndDrop(document.getElementById("listing"), onFilesToUpload);
+    setupDragAndDrop(document.getElementById("listing"), onFilesDroppedEvent);
+    setupDragAndDrop(document.getElementById("upload-dialog").getElementsByTagName("table")[0], onFilesDroppedEvent);
+    $("#upload-dialog table tfoot tr td input[type='file']").change(function() {
+      prepareToUploadFilesToPath($("#upload-dialog table tbody"), $(this)[0].files);
+      $(this).wrap('<form>').closest('form').get(0).reset();
+      $(this).unwrap();
+    });
   } else {
     $(".write-operation").remove();
   }

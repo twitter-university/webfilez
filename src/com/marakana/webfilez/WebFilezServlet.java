@@ -258,9 +258,7 @@ public final class WebFilezServlet extends HttpServlet {
 		final String type = request.getContentType();
 		final boolean makeDirRequest = this.directoryMimeType.equals(type);
 		final int responseCode;
-		final String uri = request.getRequestURI();
-		final String basePath = this.getBasePath(request, true);
-		if (fileExistsOrItIsBasePathAndIsCreated(file, uri, basePath)) {
+		if (file.exists()) {
 			if (makeDirRequest) {
 				if (file.isDirectory()) {
 					if (logger.isDebugEnabled()) {
@@ -298,15 +296,9 @@ public final class WebFilezServlet extends HttpServlet {
 				}
 			}
 			responseCode = HttpServletResponse.SC_OK;
-		} else if (!fileExistsOrItIsBasePathAndIsCreated(file.getParentFile(),
-				getParentUriPath(uri), basePath)) {
-			this.refuseBadRequest(request, response,
-					"The parent directory for [" + file.getAbsolutePath()
-							+ "] does not exist");
-			return;
 		} else {
 			if (makeDirRequest) {
-				if (file.mkdir()) {
+				if (file.mkdirs()) {
 					if (logger.isDebugEnabled()) {
 						logger.debug("Created directory ["
 								+ file.getAbsolutePath() + "]");
@@ -320,10 +312,24 @@ public final class WebFilezServlet extends HttpServlet {
 					return;
 				}
 			} else {
+				File parentFile = file.getParentFile();
+				if (!parentFile.exists()) {
+					if (parentFile.mkdirs()) {
+						if (logger.isDebugEnabled()) {
+							logger.debug("Created parent directory for ["
+									+ file.getAbsolutePath() + "]");
+						}
+					} else {
+						this.sendServerFailure(request, response,
+								"Failed to create parent directory for ["
+										+ file.getAbsolutePath() + "]");
+						return;
+					}
+				}
 				if (file.createNewFile()) {
 					if (logger.isDebugEnabled()) {
-						logger.debug("Created file [" + file.getAbsolutePath()
-								+ "]");
+						logger.debug("Created new file ["
+								+ file.getAbsolutePath() + "]");
 					}
 					this.handleUploadToFile(file, request, response);
 				} else {
@@ -749,7 +755,20 @@ public final class WebFilezServlet extends HttpServlet {
 		InputStream in = null;
 		long contentLength = 0;
 		if (isMultiPartRequest(request)) {
-			final Collection<Part> parts = request.getParts();
+			final Collection<Part> parts;
+			try {
+				parts = request.getParts();
+			} catch (IOException e) {
+				file.delete();
+				this.refuseBadRequest(
+						request,
+						response,
+						"Failed to parse data parts from the client ["
+								+ request.getRemoteAddr()
+								+ "] while writing file ["
+								+ file.getAbsolutePath() + "]. Aborting.");
+				return;
+			}
 			if (parts.size() == 1) {
 				final Part part = parts.iterator().next();
 				final String partName = getFileName(part);
@@ -792,7 +811,31 @@ public final class WebFilezServlet extends HttpServlet {
 		if (in != null) {
 			try {
 				try (final FileOutputStream out = new FileOutputStream(file)) {
-					int contentUploaded = FileUtil.copy(in, out);
+					int contentUploaded = 0;
+					byte[] b = new byte[2048];
+					while (true) {
+						int numRead;
+						try {
+							numRead = in.read(b);
+						} catch (IOException e) {
+							file.delete();
+							this.refuseBadRequest(
+									request,
+									response,
+									"Failed to read data from the client ["
+											+ request.getRemoteAddr()
+											+ "] while writing file ["
+											+ file.getAbsolutePath()
+											+ "]. Aborting.", e);
+							return;
+						}
+						if (numRead == -1) {
+							break;
+						} else {
+							out.write(b, 0, numRead);
+							contentUploaded += numRead;
+						}
+					}
 					if (contentUploaded != contentLength) {
 						if (logger.isWarnEnabled()) {
 							logger.warn("Uploaded [" + contentUploaded
@@ -1170,8 +1213,15 @@ public final class WebFilezServlet extends HttpServlet {
 	private void refuseRequest(HttpServletRequest request,
 			HttpServletResponse response, int responseCode, String msg)
 			throws ServletException, IOException {
+		this.refuseRequest(request, response, responseCode, msg, null);
+	}
+
+	private void refuseRequest(HttpServletRequest request,
+			HttpServletResponse response, int responseCode, String msg,
+			Throwable cause) throws ServletException, IOException {
 		if (logger.isWarnEnabled()) {
-			logger.warn("Refusing request with [" + responseCode + "]. " + msg);
+			logger.warn("Refusing request with [" + responseCode + "]. " + msg,
+					cause);
 		}
 		response.setStatus(responseCode);
 	}
@@ -1179,6 +1229,12 @@ public final class WebFilezServlet extends HttpServlet {
 	private void refuseBadRequest(HttpServletRequest request,
 			HttpServletResponse response, String msg) throws ServletException,
 			IOException {
+		this.refuseBadRequest(request, response, msg, null);
+	}
+
+	private void refuseBadRequest(HttpServletRequest request,
+			HttpServletResponse response, String msg, Throwable cause)
+			throws ServletException, IOException {
 		refuseRequest(request, response, HttpServletResponse.SC_BAD_REQUEST,
 				msg);
 	}

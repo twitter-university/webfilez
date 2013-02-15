@@ -84,11 +84,6 @@ tr.file td.file-name a:hover {
 	background-image: url('/images/icons/file_download.gif');
 }
 
-td.file-name .status {
-	margin-left: 2em;
-	color: #f90;
-}
-
 td.file-name .progress-bar {
 	float: right;
 	margin-left: 2em;
@@ -178,27 +173,8 @@ html.touchDevice .inline-button {
 	content: ']';
 }
 
-table#listing tbody tr:HOVER .inline-button {
+table tbody tr:HOVER .inline-button {
 	display: inline;
-}
-
-#toc {
-	font-size: 0.8em;
-	color: #333;
-}
-
-#dropbox {
-	width: 40em;
-	height: 3em;
-	border: 1px solid gray;
-	border-radius: 0.5em;
-	padding: 0.5em;
-	margin: 0.5em 0;
-	color: gray;
-}
-
-#dropbox.dragover {
-	border-color: green;
 }
 
 #status {
@@ -224,6 +200,54 @@ table#listing tbody tr:HOVER .inline-button {
 	font-size: 0.85em;
 	margin-top: -1.5em;
 	color: #666;
+}
+
+#upload-dialog table {
+	width: 100%;
+	border: 1px solid gray;
+	border-radius: 0.25em;
+    font-size: 0.9em;
+}
+
+#upload-dialog table .inline-button {
+	font-size: 0.7em;
+}
+
+#upload-dialog table tbody tr td.file-name {
+	padding-left: 20px;
+	background: url('/images/icons/file.gif') no-repeat left;
+}
+
+#upload-dialog table tbody tr td.file-name .status {
+    float: right;
+	margin-left: 0.5em;
+	display: inline-block;
+	vertical-align: baseline;
+    background: url('/images/icons/bullet_white.png') no-repeat;
+    width: 16px;
+    height: 16px;
+    padding: 0;
+}
+
+#upload-dialog table tbody tr td.file-name .pending {
+	background-image: url('/images/icons/bullet_yellow.png');
+}
+
+#upload-dialog table tbody tr td.file-name .failed {
+	background-image: url('/images/icons/bullet_red.png');
+}
+
+#upload-dialog table tbody tr td.file-name .aborted {
+	background-image: url('/images/icons/bullet_orange.png');
+}
+
+#upload-dialog table tbody tr td.file-name .success {
+	background-image: url('/images/icons/bullet_green.png');
+}
+
+.ui-dialog .ui-dialog-content {
+	padding-left: 0.2em;
+	padding-right: 0.2em;
 }
 
 .ongoing {
