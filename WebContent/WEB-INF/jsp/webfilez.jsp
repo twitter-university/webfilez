@@ -1,18 +1,19 @@
-<%@page session="false" contentType="text/html; charset=ISO-8859-1"%>
+<%@ page session="false" contentType="text/html; charset=UTF-8"%>
+<%@ taglib prefix="w" uri="/WEB-INF/webfilez.tld" %>
 <!DOCTYPE html>
 <html>
 <head>
 <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
 <link rel="shortcut icon" href="/favicon.ico" type="image/x-icon" />
 <link href="//ajax.googleapis.com/ajax/libs/jqueryui/1.9.2/themes/base/jquery-ui.css" rel="stylesheet" type="text/css"/>
-<link rel="stylesheet" href="/styles/style.css" type="text/css" />
+<link rel="stylesheet" href="/styles/style.css?v=<w:lastModified filePath='/styles/style.css'/>" type="text/css" />
 <script type="text/javascript">
   var writeAllowed = ${writeAllowed? 'true' : 'false'};
 </script>
 <script type="text/javascript" src="//ajax.googleapis.com/ajax/libs/jquery/1.8.3/jquery.min.js"></script>
 <script type="text/javascript" src="//ajax.googleapis.com/ajax/libs/jqueryui/1.9.2/jquery-ui.min.js"></script>  
 <script type="text/javascript" src="/js/modernizr.js"></script>
-<script type="text/javascript" src="/js/listing.js"></script>
+<script type="text/javascript" src="/js/webfilez.js?v=<w:lastModified filePath='/js/webfilez.js'/>"></script>
 
 <title>Listing...</title>
 </head>

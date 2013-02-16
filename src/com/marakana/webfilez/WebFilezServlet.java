@@ -569,7 +569,8 @@ public final class WebFilezServlet extends HttpServlet {
 			request.setAttribute("uri", uri);
 			request.setAttribute("dir", dir);
 			request.setAttribute("writeAllowed", this.getWriteAllowed(request));
-			request.getRequestDispatcher("/WEB-INF/jsp/listing.jsp").forward(
+
+			request.getRequestDispatcher("/WEB-INF/jsp/webfilez.jsp").forward(
 					request, response);
 		}
 	}
