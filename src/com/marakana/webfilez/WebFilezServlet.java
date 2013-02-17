@@ -229,11 +229,18 @@ public final class WebFilezServlet extends HttpServlet {
 			if (!file.isFile()
 					|| (ifMatch(request, etag) && ifUnmodifiedSince(request,
 							lastModified))) {
-				if (delete(file)) {
+				try {
+					delete(file);
+					if (logger.isDebugEnabled()) {
+						logger.debug("Deleted [" + file.getAbsolutePath() + "]");
+					}
 					response.setStatus(HttpServletResponse.SC_NO_CONTENT);
-				} else {
-					this.sendServerFailure(request, response,
-							"Failed to delete [" + file.getAbsolutePath() + "]");
+				} catch (IOException e) {
+					this.sendServerFailure(
+							request,
+							response,
+							"Failed to delete [" + file.getAbsolutePath() + "]",
+							e);
 				}
 			} else {
 				this.refuseRequest(request, response,
@@ -1035,9 +1042,7 @@ public final class WebFilezServlet extends HttpServlet {
 
 			File backupFile = null;
 			if (file.exists()) {
-				if (!move(file, backupFile = getBackupFile(file, ".backup"))) {
-					backupFile = null;
-				}
+				move(file, backupFile = getBackupFile(file, ".backup"));
 			}
 			try (final InputStream in = new BufferedInputStream(
 					part.getInputStream(), this.inputBufferSize);
@@ -1061,7 +1066,9 @@ public final class WebFilezServlet extends HttpServlet {
 							+ file.getAbsolutePath() + "]", e);
 				}
 				delete(file);
-				move(backupFile, file);
+				if (backupFile != null) {
+					move(backupFile, file);
+				}
 				throw e;
 			}
 		}

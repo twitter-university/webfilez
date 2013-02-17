@@ -2,6 +2,7 @@ package com.marakana.webfilez;
 
 import java.io.File;
 import java.io.FileInputStream;
+import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
@@ -16,89 +17,47 @@ import java.util.zip.ZipException;
 import java.util.zip.ZipFile;
 import java.util.zip.ZipOutputStream;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 public class FileUtil {
-	private static Logger logger = LoggerFactory.getLogger(FileUtil.class);
 
 	private FileUtil() {
 
 	}
 
-	public static boolean move(File from, File to) {
+	public static void move(File from, File to) throws IOException {
 		if (from == null) {
-			logger.warn("Nothing to move");
-			return true;
+			throw new NullPointerException("Cannot move from null file");
 		} else if (to == null) {
-			if (logger.isWarnEnabled()) {
-				logger.warn("Cannot move file to a null location: "
-						+ from.getAbsolutePath());
-			}
-			return false;
+			throw new NullPointerException("Cannot move to null file");
 		} else if (!from.exists()) {
-			if (logger.isWarnEnabled()) {
-				logger.warn("No such file to move: " + from.getAbsolutePath());
-			}
-			return true;
-		} else if (from.renameTo(to)) {
-			if (logger.isDebugEnabled()) {
-				logger.debug("Moved [" + from.getAbsolutePath() + "] to ["
-						+ to.getAbsolutePath() + "]");
-			}
-			return true;
-		} else {
-			if (logger.isWarnEnabled()) {
-				logger.warn("Failed to move [" + from.getAbsolutePath()
-						+ "] to [" + to.getAbsolutePath() + "]");
-			}
-			return false;
+			throw new FileNotFoundException("No such file to move: "
+					+ from.getAbsolutePath());
+		} else if (!from.renameTo(to)) {
+			throw new IOException("Failed to move [" + from.getAbsolutePath()
+					+ "] to [" + to.getAbsolutePath() + "]");
+
 		}
 	}
 
-	public static boolean delete(File file) {
+	public static void delete(File file) throws IOException {
 		if (file == null) {
-			logger.warn("Nothing to delete");
-			return true;
+			throw new NullPointerException("Cannot delete null file");
 		} else if (!file.exists()) {
-			if (logger.isWarnEnabled()) {
-				logger.warn("No such file to delete: " + file.getAbsolutePath()
-						+ ". Ignoring.");
-			}
-			return true;
+			throw new FileNotFoundException("No such file to delete: "
+					+ file.getAbsolutePath());
 		} else if (file.isDirectory()) {
 			File[] files = file.listFiles();
 			if (files != null && files.length > 0) {
 				for (File f : files) {
-					if (!delete(f)) {
-						return false;
-					}
+					delete(f);
 				}
 			}
-			if (file.delete()) {
-				if (logger.isDebugEnabled()) {
-					logger.debug("Deleted directory [" + file.getAbsolutePath()
-							+ "]");
-				}
-				return true;
-			} else {
-				if (logger.isWarnEnabled()) {
-					logger.warn("Failed to delete directory ["
-							+ file.getAbsolutePath() + "]");
-				}
-				return false;
+			if (!file.delete()) {
+				throw new IOException("Failed to delete directory ["
+						+ file.getAbsolutePath() + "]");
 			}
-		} else if (file.delete()) {
-			if (logger.isDebugEnabled()) {
-				logger.debug("Deleted file [" + file.getAbsolutePath() + "]");
-			}
-			return true;
-		} else {
-			if (logger.isWarnEnabled()) {
-				logger.warn("Failed to delete file [" + file.getAbsolutePath()
-						+ "]");
-			}
-			return false;
+		} else if (!file.delete()) {
+			throw new IOException("Failed to delete file ["
+					+ file.getAbsolutePath() + "]");
 		}
 	}
 
