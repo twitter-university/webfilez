@@ -179,8 +179,8 @@ public class FileUtil {
 	public static File getBackupFile(File file, String extension) {
 		File backupFile = new File(file.getParent(), file.getName() + extension);
 		for (int i = 1; file.exists(); i++) {
-			backupFile = new File(file.getParent(), String.format("%s_%03d%s",
-					file.getName(), i, extension));
+			backupFile = new File(file.getParent(), String.format(
+					".__%s_%03d%s", file.getName(), i, extension));
 		}
 		return backupFile;
 	}
@@ -346,5 +346,35 @@ public class FileUtil {
 				fileVisitor.visit(file);
 			}
 		}
+	}
+
+	private static final String USAGE = "FileUtil <size|unzip|delete> <source-path> [destination-path]";
+
+	public static void main(String[] args) throws IOException {
+		if (args.length < 2) {
+			System.err.println(USAGE);
+			return;
+		}
+		String action = args[0];
+		File file = new File(args[1]);
+		long t = System.nanoTime();
+		switch (action) {
+		case "size":
+			System.out.println(size(file));
+			break;
+		case "unzip":
+			unzip(file, new File(args.length < 3 ? "." : args[3]));
+			break;
+		case "delete":
+			delete(file);
+			break;
+		default:
+			System.err.println(USAGE);
+			System.err.println("No such action: " + action);
+		}
+		t = System.nanoTime() - t;
+
+		System.out.printf("Done in %d ns (%.3f ms, %.3f s)%n", t, t
+				/ (double) 1000000, t / (double) 1000000000);
 	}
 }
