@@ -142,7 +142,7 @@ public final class WebFilezServlet extends HttpServlet {
 		final String basePath = this.getBasePath(request, true);
 		String uri = request.getRequestURI();
 		File file = this.getRequestFile(request);
-		if (fileExistsOrItIsBasePathAndIsCreated(file, uri, basePath)) {
+		if (fileExistsOrItIsTheBasePathAndIsCreated(file, uri, basePath)) {
 			if (file.isDirectory()) {
 				if (uri.endsWith("/")) {
 					if (isZip(request)
@@ -374,7 +374,7 @@ public final class WebFilezServlet extends HttpServlet {
 							+ request.getRequestURI());
 		} else {
 			final File file = getRequestFile(request);
-			if (fileExistsOrItIsBasePathAndIsCreated(file, uri, basePath)) {
+			if (fileExistsOrItIsTheBasePathAndIsCreated(file, uri, basePath)) {
 				try {
 					if (file.isDirectory()) {
 						switch (action) {
@@ -1291,7 +1291,7 @@ public final class WebFilezServlet extends HttpServlet {
 		return (Boolean) request.getAttribute(Constants.WRITE_ALLOWED);
 	}
 
-	private boolean fileExistsOrItIsBasePathAndIsCreated(File file, String uri,
+	private boolean fileExistsOrItIsTheBasePathAndIsCreated(File file, String uri,
 			String basePath) {
 		if (file.exists()) {
 			if (logger.isTraceEnabled()) {
