@@ -2,9 +2,7 @@ package com.marakana.webfilez;
 
 import static com.marakana.webfilez.FileUtil.copy;
 import static com.marakana.webfilez.FileUtil.delete;
-import static com.marakana.webfilez.FileUtil.getBackupFile;
 import static com.marakana.webfilez.FileUtil.getUniqueFileInDirectory;
-import static com.marakana.webfilez.FileUtil.move;
 import static com.marakana.webfilez.FileUtil.size;
 import static com.marakana.webfilez.FileUtil.unzip;
 import static com.marakana.webfilez.FileUtil.zipDirectory;
@@ -28,19 +26,22 @@ import static com.marakana.webfilez.WebUtil.setNoCacheHeaders;
 import static java.lang.Math.max;
 import static java.lang.Math.min;
 
-import java.io.BufferedInputStream;
-import java.io.BufferedOutputStream;
-import java.io.File;
-import java.io.FileInputStream;
+import java.io.ByteArrayOutputStream;
 import java.io.FileNotFoundException;
-import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.io.OutputStreamWriter;
 import java.io.UnsupportedEncodingException;
+import java.io.Writer;
 import java.net.SocketException;
 import java.net.URLDecoder;
 import java.nio.charset.Charset;
+import java.nio.file.DirectoryStream;
+import java.nio.file.FileSystems;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
@@ -65,7 +66,7 @@ import org.json.JSONWriter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import com.marakana.webfilez.FileUtil.FileVisitor;
+import com.marakana.webfilez.FileUtil.PathHandler;
 import com.marakana.webfilez.WebUtil.Range;
 
 public final class WebFilezServlet extends HttpServlet {
@@ -76,23 +77,23 @@ public final class WebFilezServlet extends HttpServlet {
 	private static final long serialVersionUID = 1L;
 	private static Logger logger = LoggerFactory
 			.getLogger(WebFilezServlet.class);
-	protected static final String MULTIPART_BOUNDARY = "webfilez_boundary";
+	protected static final String MULTIPART_BOUNDARY = "mrkn_webfilez_boundary";
 
-	private int outputBufferSize;
+	private Charset DEFAULT_CHARSET = Charset.forName("UTF-8");
 
-	private int inputBufferSize;
+	private int bufferSize;
 
 	private String defaultMimeType;
 
 	private String directoryMimeType;
 
-	private String readmeFileName;
+	private Path readmeFileName;
 
 	private long readmeFileMaxLength;
 
 	private Charset readmeFileCharset;
 
-	private File rootDir;
+	private String rootDir;
 
 	private Collection<SearchAndReplace> rewriteRules;
 
@@ -106,29 +107,26 @@ public final class WebFilezServlet extends HttpServlet {
 			try {
 				final Params params = asParams((Context) ctx
 						.lookup("java:comp/env/"));
-				this.inputBufferSize = params.getInteger("input-buffer-size",
-						2048);
-				this.outputBufferSize = params.getInteger("output-buffer-size",
-						2048);
+				this.bufferSize = params.getInteger("buffer-size", 4096);
 				this.directoryMimeType = params.getString(
 						"directory-mime-type", "x-directory/normal");
 				this.defaultMimeType = params.getString("default-mime-type",
 						"application/octet-stream");
-				this.readmeFileName = params.getString("readme-file-name",
-						"README.html");
+				this.readmeFileName = FileSystems.getDefault().getPath(
+						params.getString("readme-file-name", "README.html"));
 				this.readmeFileMaxLength = params.getInteger(
 						"readme-file-max-length", 5 * 1024 * 1024);
 				this.readmeFileCharset = Charset.forName(params.getString(
 						"readme-file-charset", "UTF-8"));
 				final String rootDir = params.getString("root-dir");
-				this.rootDir = rootDir == null ? new File(super
-						.getServletContext().getRealPath(".")) : new File(
-						rootDir);
+				this.rootDir = rootDir == null ? "." : rootDir;
 				this.rewriteRules = SearchAndReplace.parse(params
 						.getString("rewrite-rules"));
 				this.basePathPattern = Pattern.compile(params.getString(
 						"base-path-pattern", "^(/[^/]+/[0-9]+/files/).*"));
-
+				if (logger.isInfoEnabled()) {
+					logger.info("Initialized " + this);
+				}
 			} finally {
 				ctx.close();
 			}
@@ -141,9 +139,9 @@ public final class WebFilezServlet extends HttpServlet {
 			HttpServletResponse response) throws ServletException, IOException {
 		final String basePath = this.getBasePath(request, true);
 		String uri = request.getRequestURI();
-		File file = this.getRequestFile(request);
+		Path file = this.getRequestFile(request);
 		if (fileExistsOrItIsTheBasePathAndIsCreated(file, uri, basePath)) {
-			if (file.isDirectory()) {
+			if (Files.isDirectory(file)) {
 				if (uri.endsWith("/")) {
 					if (isZip(request)
 							|| "zip_download".equals(request
@@ -152,11 +150,9 @@ public final class WebFilezServlet extends HttpServlet {
 							this.handleZipDownloadRequest(request, response,
 									file);
 						} catch (IOException e) {
-							this.sendServerFailure(
-									request,
-									response,
-									"Failed to send ZIP of files in ["
-											+ file.getAbsolutePath() + "]", e);
+							this.sendServerFailure(request, response,
+									"Failed to send ZIP of files in [" + file
+											+ "]", e);
 						}
 					} else {
 						try {
@@ -164,7 +160,7 @@ public final class WebFilezServlet extends HttpServlet {
 						} catch (JSONException e) {
 							this.sendServerFailure(request, response,
 									"Failed to send listing as JSON for ["
-											+ file.getAbsolutePath() + "]", e);
+											+ file + "]", e);
 						}
 					}
 				} else {
@@ -173,44 +169,38 @@ public final class WebFilezServlet extends HttpServlet {
 					}
 					response.sendRedirect(uri + "/");
 				}
-			} else if (file.isFile()) {
+			} else if (Files.isRegularFile(file)) {
 				this.handleDownload(request, response, file);
 			} else {
 				this.sendServerFailure(request, response,
-						"Not a file or a directory [" + file.getAbsolutePath()
+						"Not a file or a directory [" + file
 								+ "] in response to [" + uri + "]");
 			}
 		} else {
 			if (!isHead(request)) {
 				// search for the closest folder that does exist
 				// until we get to directory root
-				for (; !file.equals(this.rootDir) && !file.exists()
-						&& uri != null && !uri.equals(basePath); file = file
-						.getParentFile(), uri = getParentUriPath(uri)) {
-					if (logger.isDebugEnabled()) {
-						logger.debug("Trying to see if [" + uri + "] exists.");
-					}
-				}
-				if (uri != null) {
-					if (uri.equals(basePath)) {
-						this.sendServerFailure(
-								request,
-								response,
-								"Failed to access/create "
-										+ file.getAbsolutePath());
-					} else {
+				while (uri != null && uri.startsWith(basePath)
+						&& !file.toString().equals(this.rootDir)) {
+					uri = getParentUriPath(uri);
+					file = file.getParent();
+					if (Files.exists(file)) {
 						if (logger.isDebugEnabled()) {
 							logger.debug("Attempting to recover. Redirecting to: "
 									+ uri);
 						}
 						response.sendRedirect(uri);
+						return;
+					} else {
+						if (logger.isTraceEnabled()) {
+							logger.trace("Trying to see if [" + uri
+									+ "] exists.");
+						}
 					}
-					return;
 				}
 			}
 			this.refuseRequest(request, response,
-					HttpServletResponse.SC_NOT_FOUND,
-					"No such file [" + file.getAbsolutePath()
+					HttpServletResponse.SC_NOT_FOUND, "No such file [" + file
 							+ "] in response to [" + uri + "]");
 		}
 	}
@@ -218,77 +208,71 @@ public final class WebFilezServlet extends HttpServlet {
 	@Override
 	protected void doDelete(HttpServletRequest request,
 			HttpServletResponse response) throws ServletException, IOException {
-		final File file = getRequestFile(request);
+		final Path file = getRequestFile(request);
 		if (logger.isDebugEnabled()) {
-			logger.debug("Processing request to delete ["
-					+ file.getAbsolutePath() + "]");
+			logger.debug("Processing request to delete [" + file + "]");
 		}
-		if (file.exists()) {
-			final long lastModified = file.lastModified();
-			final String etag = generateETag(file.length(), lastModified);
-			if (!file.isFile()
-					|| (ifMatch(request, etag) && ifUnmodifiedSince(request,
-							lastModified))) {
+		if (Files.exists(file)) {
+			final long lastModified = Files.getLastModifiedTime(file)
+					.toMillis();
+			final String etag = generateETag(Files.size(file), lastModified);
+			if (ifMatch(request, etag)
+					&& ifUnmodifiedSince(request, lastModified)) {
 				try {
 					delete(file);
 					if (logger.isDebugEnabled()) {
-						logger.debug("Deleted [" + file.getAbsolutePath() + "]");
+						logger.debug("Deleted [" + file + "]");
 					}
 					response.setStatus(HttpServletResponse.SC_NO_CONTENT);
 				} catch (IOException e) {
-					this.sendServerFailure(
-							request,
-							response,
-							"Failed to delete [" + file.getAbsolutePath() + "]",
-							e);
+					this.sendServerFailure(request, response,
+							"Failed to delete [" + file + "]", e);
 				}
 			} else {
 				this.refuseRequest(request, response,
 						HttpServletResponse.SC_PRECONDITION_FAILED,
 						"Refusing to delete file for which precondition failed: ["
-								+ file.getAbsolutePath() + "]");
+								+ file + "]");
 			}
 		} else {
-			this.refuseRequest(
-					request,
-					response,
+			this.refuseRequest(request, response,
 					HttpServletResponse.SC_NOT_FOUND,
-					"Cannot delete a file that does not exist ["
-							+ file.getAbsolutePath() + "]");
+					"Cannot delete a file that does not exist [" + file + "]");
 		}
 	}
 
 	@Override
 	protected void doPut(HttpServletRequest request,
 			HttpServletResponse response) throws ServletException, IOException {
-		final File file = this.getRequestFile(request);
+		final Path file = this.getRequestFile(request);
 		final String type = request.getContentType();
 		final boolean makeDirRequest = this.directoryMimeType.equals(type);
 		final int responseCode;
-		if (file.exists()) {
+		if (Files.exists(file)) {
 			if (makeDirRequest) {
-				if (file.isDirectory()) {
+				if (Files.isDirectory(file)) {
 					if (logger.isDebugEnabled()) {
-						logger.debug("Directory already exists ["
-								+ file.getAbsolutePath() + "]. Ignoring.");
+						logger.debug("Directory already exists [" + file
+								+ "]. Ignoring.");
 					}
 				} else {
 					this.refuseRequest(request, response,
 							HttpServletResponse.SC_CONFLICT,
 							"Cannot create directory since a file with the same name already exists ["
-									+ file.getAbsolutePath() + "]");
+									+ file + "]");
 					return;
 				}
 			} else {
-				if (file.isDirectory()) {
+				if (Files.isDirectory(file)) {
 					this.refuseRequest(request, response,
 							HttpServletResponse.SC_CONFLICT,
 							"Cannot create file since a directory with the same name already exists ["
-									+ file.getAbsolutePath() + "]");
+									+ file + "]");
 					return;
 				} else {
-					final long lastModified = file.lastModified();
-					final String etag = generateETag(file.length(),
+					final long lastModified = Files.getLastModifiedTime(file)
+							.toMillis();
+					final String etag = generateETag(Files.size(file),
 							lastModified);
 					if (ifMatch(request, etag)
 							&& ifUnmodifiedSince(request, lastModified)) {
@@ -297,7 +281,7 @@ public final class WebFilezServlet extends HttpServlet {
 						this.refuseRequest(request, response,
 								HttpServletResponse.SC_PRECONDITION_FAILED,
 								"Cannot modify file for which precondition failed: ["
-										+ file.getAbsolutePath() + "]");
+										+ file + "]");
 						return;
 					}
 				}
@@ -305,46 +289,24 @@ public final class WebFilezServlet extends HttpServlet {
 			responseCode = HttpServletResponse.SC_OK;
 		} else {
 			if (makeDirRequest) {
-				if (file.mkdirs()) {
-					if (logger.isDebugEnabled()) {
-						logger.debug("Created directory ["
-								+ file.getAbsolutePath() + "]");
-					}
-				} else {
-					this.sendServerFailure(
-							request,
-							response,
-							"Failed to create directory ["
-									+ file.getAbsolutePath() + "]");
-					return;
+				Files.createDirectories(file);
+				if (logger.isDebugEnabled()) {
+					logger.debug("Created directory [" + file + "]");
 				}
 			} else {
-				File parentFile = file.getParentFile();
-				if (!parentFile.exists()) {
-					if (parentFile.mkdirs()) {
-						if (logger.isDebugEnabled()) {
-							logger.debug("Created parent directory for ["
-									+ file.getAbsolutePath() + "]");
-						}
-					} else {
-						this.sendServerFailure(request, response,
-								"Failed to create parent directory for ["
-										+ file.getAbsolutePath() + "]");
-						return;
-					}
-				}
-				if (file.createNewFile()) {
+				Path parentDir = file.getParent();
+				if (!Files.exists(parentDir)) {
+					Files.createDirectories(parentDir);
 					if (logger.isDebugEnabled()) {
-						logger.debug("Created new file ["
-								+ file.getAbsolutePath() + "]");
+						logger.debug("Created parent directory for [" + file
+								+ "]");
 					}
-					this.handleUploadToFile(file, request, response);
-				} else {
-					this.sendServerFailure(request, response,
-							"Failed to create file [" + file.getAbsolutePath()
-									+ "]");
-					return;
 				}
+				Files.createFile(file);
+				if (logger.isDebugEnabled()) {
+					logger.debug("Created new file [" + file + "]");
+				}
+				this.handleUploadToFile(file, request, response);
 			}
 			responseCode = HttpServletResponse.SC_CREATED;
 		}
@@ -355,7 +317,7 @@ public final class WebFilezServlet extends HttpServlet {
 			if (logger.isErrorEnabled()) {
 				logger.error(
 						"Failed to generate JSON response to PUT request file ["
-								+ file.getAbsolutePath() + "]", e);
+								+ file + "]", e);
 			}
 			response.resetBuffer();
 		}
@@ -373,10 +335,10 @@ public final class WebFilezServlet extends HttpServlet {
 					"No action specified for POST to "
 							+ request.getRequestURI());
 		} else {
-			final File file = getRequestFile(request);
+			final Path file = getRequestFile(request);
 			if (fileExistsOrItIsTheBasePathAndIsCreated(file, uri, basePath)) {
 				try {
-					if (file.isDirectory()) {
+					if (Files.isDirectory(file)) {
 						switch (action) {
 						case "upload":
 							if (isMultiPartRequest(request)) {
@@ -408,7 +370,7 @@ public final class WebFilezServlet extends HttpServlet {
 											+ "] to directory "
 											+ request.getRequestURI());
 						}
-					} else if (file.isFile()) {
+					} else if (Files.isRegularFile(file)) {
 						switch (action) {
 						case "unzip":
 							this.handleUnzip(file, request, response);
@@ -425,11 +387,9 @@ public final class WebFilezServlet extends HttpServlet {
 											+ request.getRequestURI());
 						}
 					} else {
-						this.refuseBadRequest(
-								request,
-								response,
-								"Don't know how to handle POST to file "
-										+ file.getAbsolutePath());
+						this.refuseRequest(request, response,
+								HttpServletResponse.SC_FORBIDDEN,
+								"Don't know how to handle POST to file " + file);
 					}
 				} catch (Exception e) {
 					this.sendServerFailure(request, response,
@@ -440,27 +400,26 @@ public final class WebFilezServlet extends HttpServlet {
 				this.refuseRequest(request, response,
 						HttpServletResponse.SC_NOT_FOUND,
 						"Cannot handle a POST request for file that does not exist: "
-								+ file.getAbsolutePath());
+								+ file);
 			}
 		}
 	}
 
 	private void handleZipDownloadRequest(HttpServletRequest request,
-			HttpServletResponse response, File dir) throws ServletException,
+			HttpServletResponse response, Path dir) throws ServletException,
 			IOException {
 		if (logger.isTraceEnabled()) {
-			logger.trace("ZIP-downloading files in [" + dir.getAbsolutePath()
-					+ "]");
+			logger.trace("ZIP-downloading files in [" + dir + "]");
 		}
-		final List<File> files = this.getFilesFromRequest(request, dir);
+		final List<Path> files = this.getFilesFromRequest(request, dir);
 		String filename = request.getParameter("filename");
 		if (files.isEmpty()) {
 			this.refuseBadRequest(request, response,
 					"Select at least one file to zip-download");
 		} else {
 			if (filename == null) {
-				filename = (files.size() == 1 ? files.get(0) : dir).getName()
-						+ ".zip";
+				filename = (files.size() == 1 ? files.get(0) : dir)
+						.getFileName() + ".zip";
 			}
 			response.setContentType("application/zip");
 			response.setHeader("Content-Disposition",
@@ -471,10 +430,10 @@ public final class WebFilezServlet extends HttpServlet {
 	}
 
 	private void handleList(HttpServletRequest request,
-			HttpServletResponse response, File dir, String basePath)
+			HttpServletResponse response, Path dir, String basePath)
 			throws IOException, ServletException, JSONException {
 		final String uri = request.getRequestURI();
-		final long lastModified = dir.lastModified();
+		final long lastModified = Files.getLastModifiedTime(dir).toMillis();
 		// TODO, we should probably find the most up-to-date file and use it for
 		// last-modified???
 		if (lastModified >= 0) {
@@ -485,89 +444,78 @@ public final class WebFilezServlet extends HttpServlet {
 			response.setHeader("ETag", generateETag(size(dir), lastModified));
 		} else if (isJson(request)) {
 			if (logger.isTraceEnabled()) {
-				logger.trace("Listing files in [" + dir.getAbsolutePath() + "]");
+				logger.trace("Listing files in [" + dir + "]");
 			}
-			File[] files = dir.listFiles();
-			if (files == null) {
-				this.sendServerFailure(
-						request,
-						response,
-						"Failed to list files in directory: "
-								+ dir.getAbsolutePath());
+			response.setContentType("application/json");
+			response.setHeader("Accept-Ranges", "none");
+			final ByteArrayOutputStream out = new ByteArrayOutputStream(8196);
+			long totalSize = 0;
+			Path readmeFile = null;
+			final Writer outWriter = new OutputStreamWriter(out,
+					DEFAULT_CHARSET);
+			final JSONWriter jsonWriter = new JSONWriter(outWriter);
+			jsonWriter.object();
+			jsonWriter.key("files").array();
+			try (DirectoryStream<Path> files = Files.newDirectoryStream(dir)) {
+				for (Path file : files) {
+					totalSize += writeFileInfoToJson(file, jsonWriter);
+					if (file.getFileName().equals(this.readmeFileName)) {
+						readmeFile = file;
+					}
+				}
+			}
+			jsonWriter.endArray();
+			response.setHeader("ETag", generateETag(totalSize, lastModified));
+			jsonWriter.key("uri").value(uri);
+			jsonWriter.key("name").value(dir.getFileName());
+			jsonWriter.key("type").value(this.directoryMimeType);
+			jsonWriter.key("size").value(totalSize);
+			jsonWriter.key("lastModified")
+					.value(Files.getLastModifiedTime(dir));
+			jsonWriter.key("writeAllowed").value(this.getWriteAllowed(request));
+			if (uri.length() > basePath.length() && uri.startsWith(basePath)) {
+				jsonWriter.key("parent").value(getParentUriPath(uri));
 			} else {
-				response.setContentType("application/json");
-				response.setHeader("Accept-Ranges", "none");
-				final int bufferSize = 1024 + files.length * 110;
-				response.setBufferSize(bufferSize);
-				long totalSize = 0;
-				File readmeFile = null;
-				final JSONWriter jsonWriter = new JSONWriter(
-						response.getWriter());
-				jsonWriter.object();
-				jsonWriter.key("files").array();
-
-				for (File f : files) {
-					totalSize += writeFileInfoToJson(f, jsonWriter);
-					if (f.getName().equals(this.readmeFileName)) {
-						readmeFile = f;
-					}
+				if (logger.isTraceEnabled()) {
+					logger.trace("No parent present for uri [" + uri
+							+ "] and basePath [" + basePath + "]");
 				}
-				jsonWriter.endArray();
-				if (response.isCommitted()) {
-					if (logger.isWarnEnabled()) {
-						logger.warn("Cannot send ETag, because the response with buffer size ["
-								+ bufferSize + "] has already been committed ");
-					}
-				} else {
-					response.setHeader("ETag",
-							generateETag(totalSize, lastModified));
-				}
-				jsonWriter.key("uri").value(uri);
-				jsonWriter.key("name").value(dir.getName());
-				jsonWriter.key("type").value(this.directoryMimeType);
-				jsonWriter.key("size").value(totalSize);
-				jsonWriter.key("lastModified").value(dir.lastModified());
-				jsonWriter.key("writeAllowed").value(
-						this.getWriteAllowed(request));
-				if (uri.length() > basePath.length()
-						&& uri.startsWith(basePath)) {
-					jsonWriter.key("parent").value(getParentUriPath(uri));
-				} else {
-					if (logger.isTraceEnabled()) {
-						logger.trace("No parent present for uri [" + uri
-								+ "] and basePath [" + basePath + "]");
-					}
-				}
-				if (readmeFile != null) {
-					if (readmeFile.length() > this.readmeFileMaxLength) {
-						if (logger.isWarnEnabled()) {
-							logger.warn("README file ["
-									+ readmeFile.getAbsolutePath() + "] size ["
-									+ readmeFile.length()
-									+ "] exceeds max size ["
-									+ this.readmeFileMaxLength + "]. Ignoring.");
-						}
-					} else {
-						try {
-							final String readme = FileUtil.readFileToString(
-									readmeFile, this.readmeFileCharset);
-							jsonWriter.key("readme").value(readme);
-						} catch (IOException e) {
-							if (logger.isWarnEnabled()) {
-								logger.warn("Failed to read the README file ["
-										+ readmeFile.getAbsolutePath()
-										+ "]. Ignoring.", e);
-							}
-						}
-					}
-				} else {
-					if (logger.isTraceEnabled()) {
-						logger.trace("No README file present for uri [" + uri
-								+ "] and dir [" + dir.getAbsolutePath() + "]");
-					}
-				}
-				jsonWriter.endObject();
 			}
+			if (readmeFile != null) {
+				long readFileLength = Files.size(readmeFile);
+				if (readFileLength > this.readmeFileMaxLength) {
+					if (logger.isWarnEnabled()) {
+						logger.warn("README file [" + readmeFile + "] size ["
+								+ readFileLength + "] exceeds max size ["
+								+ this.readmeFileMaxLength + "]. Ignoring.");
+					}
+				} else {
+					try {
+						final String readme = new String(
+								Files.readAllBytes(readmeFile),
+								this.readmeFileCharset);
+						jsonWriter.key("readme").value(readme);
+					} catch (IOException e) {
+						if (logger.isWarnEnabled()) {
+							logger.warn("Failed to read the README file ["
+									+ readmeFile + "]. Ignoring.", e);
+						}
+					}
+				}
+			} else {
+				if (logger.isTraceEnabled()) {
+					logger.trace("No README file present for uri [" + uri
+							+ "] and dir [" + dir + "]");
+				}
+			}
+			jsonWriter.endObject();
+			outWriter.flush();
+			if (logger.isTraceEnabled()) {
+				logger.trace("Writing listing of [" + out.size()
+						+ "] bytes for dir [" + dir + "]");
+			}
+			response.setContentLength(out.size());
+			out.writeTo(response.getOutputStream());
 		} else {
 			if (logger.isTraceEnabled()) {
 				logger.trace("Sending HTML for listing ["
@@ -582,39 +530,32 @@ public final class WebFilezServlet extends HttpServlet {
 		}
 	}
 
-	private String getContentType(File file) {
-		final String mimeType = super.getServletContext().getMimeType(
-				file.getName());
-		return mimeType == null ? this.defaultMimeType : mimeType;
-	}
-
 	private boolean isClientAbortException(IOException e) {
 		final Throwable cause = e.getCause();
 		return cause instanceof SocketException
 				&& "Broken pipe".equals(cause.getMessage());
 	}
 
-	private void sendFile(File file, OutputStream out, Range range)
+	private void sendFile(Path file, OutputStream out, Range range)
 			throws FileNotFoundException, IOException {
-		final long length = file.length();
+		final long length = Files.size(file);
 		if (logger.isTraceEnabled()) {
 			logger.trace(String.format("Sending bytes %d-%d/%d of file %s",
 					range == null ? 0 : range.getStart(),
 					range == null ? max(length - 1, 0) : range.getEnd(),
-					length, file.getAbsolutePath()));
+					length, file));
 		}
-		try (final InputStream in = new BufferedInputStream(
-				new FileInputStream(file), this.inputBufferSize)) {
+		try (final InputStream in = Files.newInputStream(file)) {
 			if (range != null) {
 				final long skipped = in.skip(range.getStart());
 				if (skipped < range.getStart()) {
 					throw new IOException("Tried to skip [" + range.getStart()
 							+ "] but actually skipped [" + skipped + "] on ["
-							+ file.getAbsolutePath() + "]");
+							+ file + "]");
 				}
 			}
 			long bytesToRead = range == null ? length : range.getBytesToRead();
-			final byte[] buffer = new byte[this.inputBufferSize];
+			final byte[] buffer = new byte[this.bufferSize];
 			for (int bytesRead; bytesToRead > 0
 					&& (bytesRead = in.read(buffer, 0,
 							(int) min(buffer.length, bytesToRead))) > 0;) {
@@ -625,7 +566,7 @@ public final class WebFilezServlet extends HttpServlet {
 					if (isClientAbortException(e)) {
 						if (logger.isDebugEnabled()) {
 							logger.debug("Client aborted the connection while sending file ["
-									+ file.getAbsolutePath() + "]. Bailing out");
+									+ file + "]. Bailing out");
 						}
 						return;
 					} else {
@@ -636,13 +577,13 @@ public final class WebFilezServlet extends HttpServlet {
 			try {
 				out.flush();
 				if (logger.isTraceEnabled()) {
-					logger.trace("Sent " + file.getAbsolutePath());
+					logger.trace("Sent " + file);
 				}
 			} catch (IOException e) {
 				if (isClientAbortException(e)) {
 					if (logger.isDebugEnabled()) {
 						logger.debug("Client aborted the connection while flushing file ["
-								+ file.getAbsolutePath() + "]. Bailing out");
+								+ file + "]. Bailing out");
 					}
 					return;
 				} else {
@@ -653,19 +594,20 @@ public final class WebFilezServlet extends HttpServlet {
 	}
 
 	private void handleDownload(HttpServletRequest request,
-			HttpServletResponse response, File file) throws IOException,
+			HttpServletResponse response, Path file) throws IOException,
 			ServletException {
-		if (!file.canRead()) {
+		if (!Files.isReadable(file)) {
 			this.refuseRequest(request, response,
-					HttpServletResponse.SC_FORBIDDEN, "Cannot send file ["
-							+ file.getAbsolutePath() + "] for request URI ["
+					HttpServletResponse.SC_FORBIDDEN,
+					"Cannot send file [" + file + "] for request URI ["
 							+ request.getRequestURI()
 							+ "]; file cannot be read");
 		} else {
-			final long length = file.length();
-			final long lastModified = file.lastModified();
+			final long length = Files.size(file);
+			final long lastModified = Files.getLastModifiedTime(file)
+					.toMillis();
 			final String eTag = generateETag(length, lastModified);
-			final String contentType = getContentType(file);
+			final String contentType = getMimeType(file);
 			if (lastModified >= 0) {
 				response.setDateHeader("Last-Modified", lastModified);
 			}
@@ -677,8 +619,7 @@ public final class WebFilezServlet extends HttpServlet {
 					lastModified, length);
 			if (ranges == null) {
 				if (logger.isWarnEnabled()) {
-					logger.warn("Cannot handle download of ["
-							+ file.getAbsolutePath()
+					logger.warn("Cannot handle download of [" + file
 							+ "]. Problem with ranges.");
 				}
 				return;
@@ -688,13 +629,13 @@ public final class WebFilezServlet extends HttpServlet {
 					if (logger.isTraceEnabled()) {
 						logger.trace(request.getMethod()
 								+ " request for the entire "
-								+ request.getRequestURI());
+								+ request.getRequestURI() + " of type "
+								+ contentType);
 					}
 					response.setStatus(HttpServletResponse.SC_OK);
 					response.setContentType(contentType);
 					setContentLength(response, length);
 					if (!isHead(request)) {
-						response.setBufferSize(this.outputBufferSize);
 						sendFile(file, response.getOutputStream(), null);
 					}
 				} else if (ranges.size() == 1) {
@@ -702,7 +643,8 @@ public final class WebFilezServlet extends HttpServlet {
 					if (logger.isTraceEnabled()) {
 						logger.trace(request.getMethod() + " request for "
 								+ range.toContentRangeHeaderValue() + " of "
-								+ request.getRequestURI());
+								+ request.getRequestURI() + " of type "
+								+ contentType);
 					}
 					response.setStatus(HttpServletResponse.SC_PARTIAL_CONTENT);
 					response.addHeader("Content-Range",
@@ -710,13 +652,13 @@ public final class WebFilezServlet extends HttpServlet {
 					setContentLength(response, range.getBytesToRead());
 					response.setContentType(contentType);
 					if (!isHead(request)) {
-						response.setBufferSize(this.outputBufferSize);
 						sendFile(file, response.getOutputStream(), range);
 					}
 				} else if (ranges.size() > 1) {
 					if (logger.isTraceEnabled()) {
 						logger.trace(request.getMethod() + " request for "
-								+ ranges + " of " + request.getRequestURI());
+								+ ranges + " of " + request.getRequestURI()
+								+ " of type " + contentType);
 					}
 					response.setStatus(HttpServletResponse.SC_PARTIAL_CONTENT);
 					response.setContentType("multipart/byteranges; boundary="
@@ -742,7 +684,7 @@ public final class WebFilezServlet extends HttpServlet {
 		}
 	}
 
-	private void handleUpload(File dir, HttpServletRequest request,
+	private void handleUpload(Path dir, HttpServletRequest request,
 			HttpServletResponse response) throws ServletException, IOException,
 			JSONException {
 		final Collection<Part> parts = request.getParts();
@@ -751,15 +693,30 @@ public final class WebFilezServlet extends HttpServlet {
 		}
 		response.setContentType("text/plain");
 		response.setCharacterEncoding("UTF-8");
-		final Collection<File> uploadedFiles = new LinkedList<>();
+		final Collection<Path> uploadedFiles = new LinkedList<>();
 		for (Part part : parts) {
-			uploadedFiles.add(handleUpload(part, dir));
+			final String filename = getFileName(part);
+			final Path file = this.resolveSafe(dir, filename);
+			if (file == null) {
+				this.refuseBadRequest(request, response,
+						"Detected illegal/invalid filename [" + filename
+								+ "]. Aborting.");
+				return;
+			} else {
+				if (handleUploadToFile(part.getInputStream(), part.getSize(),
+						file, request, response)) {
+					uploadedFiles.add(file);
+				} else {
+					return;
+				}
+			}
 		}
 		sendFileInfoResponse(uploadedFiles, response);
 	}
 
-	private void handleUploadToFile(File file, HttpServletRequest request,
-			HttpServletResponse response) throws ServletException, IOException {
+	private void handleUploadToFile(final Path file,
+			final HttpServletRequest request, final HttpServletResponse response)
+			throws ServletException, IOException {
 		InputStream in = null;
 		long contentLength = 0;
 		if (isMultiPartRequest(request)) {
@@ -767,22 +724,21 @@ public final class WebFilezServlet extends HttpServlet {
 			try {
 				parts = request.getParts();
 			} catch (IOException e) {
-				file.delete();
-				this.refuseBadRequest(
-						request,
-						response,
+				Files.deleteIfExists(file);
+				this.refuseBadRequest(request, response,
 						"Failed to parse data parts from the client ["
 								+ request.getRemoteAddr()
-								+ "] while writing file ["
-								+ file.getAbsolutePath() + "]. Aborting.");
+								+ "] while writing file [" + file
+								+ "]. Aborting.");
 				return;
 			}
+			final String fileName = file.getFileName().toString();
 			if (parts.size() == 1) {
 				final Part part = parts.iterator().next();
 				final String partName = getFileName(part);
-				if (!file.getName().equals(partName)) {
+				if (!fileName.equals(partName)) {
 					if (logger.isWarnEnabled()) {
-						logger.warn("Expecting filename [" + file.getName()
+						logger.warn("Expecting filename [" + fileName
 								+ "] but got [" + partName + "]. Ignoring.");
 					}
 				}
@@ -790,12 +746,11 @@ public final class WebFilezServlet extends HttpServlet {
 				in = part.getInputStream();
 				if (logger.isDebugEnabled()) {
 					logger.debug("Uploading [" + contentLength
-							+ "] bytes from part to [" + file.getAbsolutePath()
-							+ "]");
+							+ "] bytes from part to [" + file + "]");
 				}
 			} else {
 				this.refuseBadRequest(request, response,
-						"Expecting to upload one part to  [" + file.getName()
+						"Expecting to upload one part to  [" + fileName
 								+ "] but got [" + parts.size() + "]. Aborting.");
 				return;
 			}
@@ -805,114 +760,116 @@ public final class WebFilezServlet extends HttpServlet {
 			if (contentLength > 0) {
 				if (logger.isDebugEnabled()) {
 					logger.debug("Uploading [" + contentLength
-							+ "] bytes from requst to ["
-							+ file.getAbsolutePath() + "]");
+							+ "] bytes from requst to [" + file + "]");
 				}
 				in = request.getInputStream();
 			} else {
 				if (logger.isTraceEnabled()) {
-					logger.trace("Nothing to upload to ["
-							+ file.getAbsolutePath() + "]");
+					logger.trace("Nothing to upload to [" + file + "]");
 				}
 			}
 		}
 		if (in != null) {
-			try {
-				try (final FileOutputStream out = new FileOutputStream(file)) {
-					int contentUploaded = 0;
-					byte[] b = new byte[2048];
-					while (true) {
-						int numRead;
-						try {
-							numRead = in.read(b);
-						} catch (IOException e) {
-							file.delete();
-							this.refuseBadRequest(
-									request,
-									response,
-									"Failed to read data from the client ["
-											+ request.getRemoteAddr()
-											+ "] while writing file ["
-											+ file.getAbsolutePath()
-											+ "]. Aborting.", e);
-							return;
-						}
-						if (numRead == -1) {
-							break;
-						} else {
-							out.write(b, 0, numRead);
-							contentUploaded += numRead;
-						}
-					}
-					if (contentUploaded != contentLength) {
-						if (logger.isWarnEnabled()) {
-							logger.warn("Uploaded [" + contentUploaded
-									+ "] bytes to [" + file.getAbsolutePath()
-									+ "] but expected [" + contentLength
-									+ "]. Ignoring.");
-						}
-					} else {
-						if (logger.isDebugEnabled()) {
-							logger.debug("Uploaded [" + contentUploaded
-									+ "] bytes to [" + file.getAbsolutePath()
-									+ "]");
-						}
-					}
-				}
-			} finally {
-				in.close();
-			}
+			handleUploadToFile(in, contentLength, file, request, response);
 		}
 	}
 
-	private void handleZip(File dir, HttpServletRequest request,
+	private boolean handleUploadToFile(final InputStream in, final long length,
+			final Path file, final HttpServletRequest request,
+			final HttpServletResponse response) throws ServletException,
+			IOException {
+		try {
+			try (final OutputStream out = Files.newOutputStream(file)) {
+				long bytesToRead = length;
+				byte[] b = new byte[this.bufferSize];
+				while (true) {
+					int numRead;
+					try {
+						numRead = in.read(b, 0,
+								(int) min(b.length, bytesToRead));
+					} catch (IOException e) {
+						Files.deleteIfExists(file);
+						this.refuseBadRequest(request, response,
+								"Failed to read data from the client ["
+										+ request.getRemoteAddr()
+										+ "] while writing file [" + file
+										+ "]. Aborting.", e);
+						return false;
+					}
+					if (numRead == -1 || bytesToRead == 0) {
+						break;
+					} else {
+						out.write(b, 0, numRead);
+					}
+					bytesToRead -= numRead;
+				}
+				if (bytesToRead != 0) {
+					if (logger.isWarnEnabled()) {
+						logger.warn("Uploaded [" + (length - bytesToRead)
+								+ "] bytes to [" + file + "] but expected ["
+								+ length + "]. Ignoring.");
+					}
+				} else {
+					if (logger.isDebugEnabled()) {
+						logger.debug("Uploaded [" + length + "] bytes to ["
+								+ file + "]");
+					}
+				}
+				return true;
+			}
+		} finally {
+			in.close();
+		}
+	}
+
+	private void handleZip(Path dir, HttpServletRequest request,
 			HttpServletResponse response) throws ServletException, IOException,
 			JSONException {
 		if (logger.isDebugEnabled()) {
-			logger.debug("Handling request to zip files in directory ["
-					+ dir.getAbsolutePath() + "]");
+			logger.debug("Handling request to zip files in directory [" + dir
+					+ "]");
 		}
-		final File zipFile;
-		final List<File> files = this.getFilesFromRequest(request, dir);
+		final Path zipFile;
+		final List<Path> files = this.getFilesFromRequest(request, dir);
 		if (files.size() == 1) {
-			final File file = files.get(0);
-			zipFile = getUniqueFileInDirectory(dir, file.getName(), ".zip");
-			if (file.isDirectory()) {
+			final Path file = files.get(0);
+			zipFile = getUniqueFileInDirectory(dir, file.getFileName()
+					.toString(), ".zip");
+			if (Files.isDirectory(file)) {
 				if (logger.isTraceEnabled()) {
-					logger.trace("Zipping directory [" + file.getAbsolutePath()
-							+ "] to [" + zipFile.getAbsolutePath() + "]");
+					logger.trace("Zipping directory [" + file + "] to ["
+							+ zipFile + "]");
 				}
 				zipDirectory(file, zipFile);
 			} else {
 				if (logger.isTraceEnabled()) {
-					logger.trace("Zipping file [" + file.getAbsolutePath()
-							+ "] to [" + zipFile.getAbsolutePath() + "]");
+					logger.trace("Zipping file [" + file + "] to [" + zipFile
+							+ "]");
 				}
 				zipFile(file, zipFile);
 			}
 		} else {
 			zipFile = getUniqueFileInDirectory(dir, "Archive", ".zip");
 			if (logger.isTraceEnabled()) {
-				logger.trace("Zipping files [" + files + "] to ["
-						+ zipFile.getAbsolutePath() + "]");
+				logger.trace("Zipping files [" + files + "] to [" + zipFile
+						+ "]");
 			}
 			zipFiles(dir, files, zipFile);
 		}
 		this.sendFileInfoResponse(zipFile, response);
 	}
 
-	private void handleUnzip(File file, HttpServletRequest request,
+	private void handleUnzip(Path file, HttpServletRequest request,
 			HttpServletResponse response) throws Exception {
 		if (logger.isDebugEnabled()) {
-			logger.debug("Handling request to unzip file ["
-					+ file.getAbsolutePath() + "]");
+			logger.debug("Handling request to unzip file [" + file + "]");
 		}
-		final File dir = file.getParentFile();
-		final Collection<File> immediateCreatedFiles = new LinkedList<>();
-		unzip(file, dir, new FileVisitor() {
+		final Path dir = file.getParent();
+		final Collection<Path> immediateCreatedFiles = new LinkedList<>();
+		unzip(file, dir, new PathHandler() {
 			@Override
-			public void visit(File createdFile) throws IOException {
-				if (createdFile.getParentFile().equals(dir)) {
+			public void handle(Path createdFile) throws IOException {
+				if (Files.isSameFile(createdFile.getParent(), dir)) {
 					immediateCreatedFiles.add(createdFile);
 				}
 			}
@@ -920,61 +877,47 @@ public final class WebFilezServlet extends HttpServlet {
 		this.sendFileInfoResponse(immediateCreatedFiles, response);
 	}
 
-	private void handleRename(File file, HttpServletRequest request,
+	private void handleRename(Path file, HttpServletRequest request,
 			HttpServletResponse response) throws Exception {
 		if (logger.isDebugEnabled()) {
-			logger.debug("Handling request to rename file ["
-					+ file.getAbsolutePath() + "]");
+			logger.debug("Handling request to rename file [" + file + "]");
 		}
 		final String newName = request.getParameter("newName");
-		final File newFile = this.getFile(file.getParentFile(), newName);
-		if (newFile == null) {
-			refuseBadRequest(request, response,
-					"Cannot rename [" + file.getAbsolutePath()
-							+ "] because the newName=[" + newName
-							+ "] is unspecified or invalid");
-		} else if (newFile.exists()) {
-			refuseBadRequest(request, response,
-					"Cannot rename [" + file.getAbsolutePath()
-							+ "] because newFile=[" + newFile.getAbsolutePath()
-							+ "] already exists");
-		} else if (file.renameTo(newFile)) {
+		final Path newFile = file.resolveSibling(newName);
+		if (Files.exists(newFile)) {
+			refuseBadRequest(request, response, "Cannot rename [" + file
+					+ "] because newFile=[" + newFile + "] already exists");
+		} else {
+			Files.move(file, newFile);
 			if (logger.isDebugEnabled()) {
-				logger.debug("Renamed [" + file.getAbsolutePath() + "] to ["
-						+ newFile + "]");
+				logger.debug("Renamed [" + file + "] to [" + newFile + "]");
 			}
 			response.setStatus(HttpServletResponse.SC_NO_CONTENT);
-		} else {
-			this.sendServerFailure(request, response, "Failed to rename ["
-					+ file.getAbsolutePath() + "] to [" + newFile + "]");
 		}
 	}
 
-	private void handleCopy(File dir, HttpServletRequest request,
+	private void handleCopy(Path dir, HttpServletRequest request,
 			HttpServletResponse response) throws Exception {
 		if (logger.isDebugEnabled()) {
-			logger.debug("Handling request to copy file to directory ["
-					+ dir.getAbsolutePath() + "]");
+			logger.debug("Handling request to copy file to directory [" + dir
+					+ "]");
 		}
 		try {
-			final File sourceFile = this.getSourceFile(request);
-			if (sourceFile.exists()) {
-				final File destinationFile = sourceFile.getParentFile().equals(
-						dir) ? getUniqueFileInDirectory(dir,
-						sourceFile.getName()) : new File(dir,
-						sourceFile.getName());
+			final Path sourceFile = this.getSourcePath(request);
+			if (Files.exists(sourceFile)) {
+				final Path destinationFile = sourceFile.getParent().equals(dir) ? getUniqueFileInDirectory(
+						dir, sourceFile.getFileName().toString()) : dir
+						.resolve(sourceFile.getFileName());
 				copy(sourceFile, destinationFile);
 				if (logger.isDebugEnabled()) {
-					logger.debug("Copied [" + sourceFile.getAbsolutePath()
-							+ "] to [" + destinationFile.getAbsoluteFile()
-							+ "]");
+					logger.debug("Copied [" + sourceFile + "] to ["
+							+ destinationFile + "]");
 				}
 				this.sendFileInfoResponse(destinationFile, response);
 			} else {
 				this.refuseRequest(request, response,
 						HttpServletResponse.SC_NOT_FOUND, "Cannot copy ["
-								+ sourceFile.getAbsolutePath()
-								+ "] to directory [" + dir.getAbsolutePath()
+								+ sourceFile + "] to directory [" + dir
 								+ "] because the source file does not exist.");
 			}
 		} catch (IllegalArgumentException e) {
@@ -982,41 +925,31 @@ public final class WebFilezServlet extends HttpServlet {
 		}
 	}
 
-	private void handleMove(File dir, HttpServletRequest request,
+	private void handleMove(Path dir, HttpServletRequest request,
 			HttpServletResponse response) throws Exception {
 		if (logger.isDebugEnabled()) {
-			logger.debug("Handling request to move file to directory ["
-					+ dir.getAbsolutePath() + "]");
+			logger.debug("Handling request to move file to directory [" + dir
+					+ "]");
 		}
 		try {
-			final File sourceFile = this.getSourceFile(request);
-			final File destinationFile = new File(dir, sourceFile.getName());
+			final Path sourceFile = this.getSourcePath(request);
+			final Path destinationFile = dir.resolve(sourceFile.getFileName());
 			if (sourceFile.equals(destinationFile)) {
 				this.refuseRequest(request, response,
 						HttpServletResponse.SC_NOT_FOUND, "Cannot move ["
-								+ sourceFile.getAbsolutePath()
-								+ "] over itself.");
-			} else if (sourceFile.exists()) {
-				if (sourceFile.renameTo(destinationFile)) {
-					if (logger.isDebugEnabled()) {
-						logger.debug("Moved [" + sourceFile.getAbsolutePath()
-								+ "] to [" + destinationFile.getAbsoluteFile()
-								+ "]");
-					}
-					this.sendFileInfoResponse(destinationFile, response);
-				} else {
-					this.sendServerFailure(
-							request,
-							response,
-							"Failed to move [" + sourceFile.getAbsolutePath()
-									+ "] to ["
-									+ destinationFile.getAbsoluteFile() + "]");
+								+ sourceFile + "] over itself.");
+			} else if (Files.exists(sourceFile)) {
+				Files.move(sourceFile, destinationFile,
+						StandardCopyOption.REPLACE_EXISTING);
+				if (logger.isDebugEnabled()) {
+					logger.debug("Moved [" + sourceFile + "] to ["
+							+ destinationFile + "]");
 				}
+				this.sendFileInfoResponse(destinationFile, response);
 			} else {
 				this.refuseRequest(request, response,
 						HttpServletResponse.SC_NOT_FOUND, "Cannot move ["
-								+ sourceFile.getAbsolutePath()
-								+ "] to directory [" + dir.getAbsolutePath()
+								+ sourceFile + "] to directory [" + dir
 								+ "] because the source file does not exist.");
 			}
 		} catch (IllegalArgumentException e) {
@@ -1024,72 +957,21 @@ public final class WebFilezServlet extends HttpServlet {
 		}
 	}
 
-	private File handleUpload(Part part, File dir) throws IOException {
-		final String filename = getFileName(part);
-		if (filename == null) {
-			throw new IOException("Failed to get filename from part.");
-		} else if (filename.indexOf("..") != -1 || filename.indexOf('/') != -1) {
-			throw new IOException("Detected illegal/invalid filename ["
-					+ filename + "]");
-		} else {
-			final File file = new File(dir, filename);
-			if (logger.isTraceEnabled()) {
-				logger.trace("Uploading file name=[" + filename + "] of size=["
-						+ part.getSize() + "] of type=["
-						+ part.getContentType() + "] to ["
-						+ file.getAbsolutePath() + "]");
-			}
-
-			File backupFile = null;
-			if (file.exists()) {
-				move(file, backupFile = getBackupFile(file, ".backup"));
-			}
-			try (final InputStream in = new BufferedInputStream(
-					part.getInputStream(), this.inputBufferSize);
-					OutputStream out = new BufferedOutputStream(
-							new FileOutputStream(file), this.outputBufferSize)) {
-				byte[] buffer = new byte[this.inputBufferSize];
-				int nread;
-				while ((nread = in.read(buffer)) > 0) {
-					out.write(buffer, 0, nread);
-				}
-				out.flush();
-				if (logger.isDebugEnabled()) {
-					logger.debug("Uploaded [" + filename + "] to ["
-							+ file.getAbsolutePath() + "]");
-				}
-				delete(backupFile);
-				return file;
-			} catch (IOException e) {
-				if (logger.isWarnEnabled()) {
-					logger.warn("Failed to upload [" + filename + "] to ["
-							+ file.getAbsolutePath() + "]", e);
-				}
-				delete(file);
-				if (backupFile != null) {
-					move(backupFile, file);
-				}
-				throw e;
-			}
-		}
-	}
-
-	private List<File> getFilesFromRequest(HttpServletRequest req, File dir) {
+	private List<Path> getFilesFromRequest(HttpServletRequest req, Path dir) {
 		final String[] filenames = req.getParameterValues("file");
-		final List<File> files;
+		final List<Path> paths;
 		if (filenames == null || filenames.length == 0) {
-			files = Collections.emptyList();
+			paths = Collections.emptyList();
 		} else {
-			files = new ArrayList<File>(filenames.length);
+			paths = new ArrayList<>(filenames.length);
 			for (String filename : filenames) {
-				File file = this.getFile(dir, filename);
-				if (file != null) {
-					if (file.exists()) {
-						files.add(file);
+				Path path = this.resolveSafe(dir, filename);
+				if (path != null) {
+					if (Files.exists(path)) {
+						paths.add(path);
 					} else {
 						if (logger.isDebugEnabled()) {
-							logger.debug("Request-specified file ["
-									+ file.getAbsolutePath()
+							logger.debug("Request-specified file [" + path
 									+ "] does not exist. Skipping.");
 						}
 					}
@@ -1097,29 +979,30 @@ public final class WebFilezServlet extends HttpServlet {
 			}
 		}
 		if (logger.isTraceEnabled()) {
-			logger.trace("Got [" + files.size() + "] file(s) from the request");
+			logger.trace("Got [" + paths.size() + "] file(s) from the request");
 		}
-		return files;
+		return paths;
 	}
 
-	private File getRequestFile(HttpServletRequest request)
+	private Path getRequestFile(HttpServletRequest request)
 			throws UnsupportedEncodingException {
-		return this.getRequestFile(request.getRequestURI());
+		return this.resolvePath(request.getRequestURI());
 	}
 
-	private File getRequestFile(final String path)
+	private Path resolvePath(final String requestedPath)
 			throws UnsupportedEncodingException {
-		final File file = new File(this.rootDir,
-				SearchAndReplace.searchAndReplace(
-						URLDecoder.decode(path, "UTF-8"), this.rewriteRules));
+		String updatedRequestedPath = SearchAndReplace.searchAndReplace(
+				URLDecoder.decode(requestedPath, "UTF-8"), this.rewriteRules);
+		final Path resolvedPath = FileSystems.getDefault().getPath(
+				this.rootDir, updatedRequestedPath);
 		if (logger.isTraceEnabled()) {
-			logger.trace("Resolved path [" + path + "] to ["
-					+ file.getAbsolutePath() + "]");
+			logger.trace("Resolved path [" + requestedPath + "] to ["
+					+ resolvedPath + "]");
 		}
-		return file;
+		return resolvedPath;
 	}
 
-	private File getSourceFile(HttpServletRequest request)
+	private Path getSourcePath(HttpServletRequest request)
 			throws UnsupportedEncodingException {
 		final String basePath = this.getBasePath(request, false);
 		final String targetPath = request.getRequestURI();
@@ -1142,11 +1025,11 @@ public final class WebFilezServlet extends HttpServlet {
 			throw new IllegalArgumentException("TargetPath [" + targetPath
 					+ "] starts with sourcePath [" + sourcePath + "]");
 		} else {
-			return this.getRequestFile(sourcePath);
+			return this.resolvePath(sourcePath);
 		}
 	}
 
-	private File getFile(File dir, String filename) {
+	private Path resolveSafe(Path dir, String filename) {
 		if (dir == null) {
 			if (logger.isWarnEnabled()) {
 				logger.warn("No dir. Skipping.");
@@ -1161,49 +1044,54 @@ public final class WebFilezServlet extends HttpServlet {
 						+ "]. Skipping.");
 			}
 		} else {
-			return new File(dir, filename);
+			return dir.resolve(filename);
 		}
 		return null;
 	}
 
-	private String getFileType(File file) {
-		if (file.isDirectory()) {
-			return this.directoryMimeType;
+	private String getMimeType(Path path) throws IOException {
+		String mimeType;
+		if (Files.isDirectory(path)) {
+			mimeType = this.directoryMimeType;
 		} else {
-			String mimeType = super.getServletContext().getMimeType(
-					file.getName());
-			return mimeType == null ? this.defaultMimeType : mimeType;
+			mimeType = super.getServletContext().getMimeType(
+					path.getFileName().toString());
+			if (mimeType == null) {
+				mimeType = Files.probeContentType(path);
+			}
+			if (mimeType == null) {
+				mimeType = this.defaultMimeType;
+			}
 		}
+		return mimeType;
 	}
 
-	private long writeFileInfoToJson(Iterable<File> files, JSONWriter jsonWriter)
-			throws JSONException {
+	private long writeFileInfoToJson(Iterable<Path> paths, JSONWriter jsonWriter)
+			throws JSONException, IOException {
 		long size = 0;
 		jsonWriter.array();
-		for (File createdFile : files) {
-			size += writeFileInfoToJson(createdFile, jsonWriter);
+		for (Path path : paths) {
+			size += writeFileInfoToJson(path, jsonWriter);
 		}
 		jsonWriter.endArray();
 		return size;
 	}
 
-	private long writeFileInfoToJson(File file, JSONWriter jsonWriter)
-			throws JSONException {
-		final long size = size(file);
-		final long lastModified = file.lastModified();
+	private long writeFileInfoToJson(Path path, JSONWriter jsonWriter)
+			throws JSONException, IOException {
+		final long size = size(path);
+		final long lastModified = Files.getLastModifiedTime(path).toMillis();
 		jsonWriter.object();
-		jsonWriter.key("name").value(file.getName());
-		jsonWriter.key("type").value(getFileType(file));
+		jsonWriter.key("name").value(path.getName(path.getNameCount() - 1));
+		jsonWriter.key("type").value(getMimeType(path));
 		jsonWriter.key("size").value(size);
 		jsonWriter.key("lastModified").value(lastModified);
-		if (file.isFile()) {
-			jsonWriter.key("eTag").value(generateETag(size, lastModified));
-		}
+		jsonWriter.key("eTag").value(generateETag(size, lastModified));
 		jsonWriter.endObject();
 		return size;
 	}
 
-	private void sendFileInfoResponse(File file, HttpServletResponse response)
+	private void sendFileInfoResponse(Path file, HttpServletResponse response)
 			throws IOException, JSONException {
 		response.setContentType("application/json");
 		JSONWriter jsonWriter = new JSONWriter(response.getWriter());
@@ -1211,10 +1099,10 @@ public final class WebFilezServlet extends HttpServlet {
 		response.flushBuffer();
 	}
 
-	private void sendFileInfoResponse(Collection<File> files,
+	private void sendFileInfoResponse(Collection<Path> paths,
 			HttpServletResponse response) throws IOException, JSONException {
 		response.setContentType("application/json");
-		writeFileInfoToJson(files, new JSONWriter(response.getWriter()));
+		writeFileInfoToJson(paths, new JSONWriter(response.getWriter()));
 		response.flushBuffer();
 	}
 
@@ -1291,36 +1179,39 @@ public final class WebFilezServlet extends HttpServlet {
 		return (Boolean) request.getAttribute(Constants.WRITE_ALLOWED);
 	}
 
-	private boolean fileExistsOrItIsTheBasePathAndIsCreated(File file, String uri,
-			String basePath) {
-		if (file.exists()) {
+	private boolean fileExistsOrItIsTheBasePathAndIsCreated(Path file,
+			String uri, String basePath) throws IOException {
+		if (Files.exists(file)) {
 			if (logger.isTraceEnabled()) {
-				logger.trace("File/directory [" + file.getAbsolutePath()
-						+ "] already exists");
+				logger.trace("File/directory [" + file + "] already exists");
 			}
 			return true;
 		} else if (uri != null && uri.equals(basePath)) {
-			if (file.mkdirs()) {
-				if (logger.isDebugEnabled()) {
-					logger.debug("Created the base dir ["
-							+ file.getAbsolutePath() + "]");
-				}
-				return true;
-			} else {
-				if (logger.isWarnEnabled()) {
-					logger.warn("Failed to create base dir ["
-							+ file.getAbsolutePath() + "]");
-				}
-				return false;
+			Files.createDirectories(file);
+			if (logger.isDebugEnabled()) {
+				logger.debug("Created the base dir [" + file + "]");
 			}
+			return true;
 		} else {
 			if (logger.isTraceEnabled()) {
-				logger.trace("File/directory [" + file.getAbsolutePath()
+				logger.trace("File/directory [" + file
 						+ "] does not exist and uri=[" + uri
 						+ "] is not the same as the base path=[" + basePath
 						+ "]");
 			}
 			return false;
 		}
+	}
+
+	@Override
+	public String toString() {
+		return "WebFilezServlet [bufferSize=" + bufferSize
+				+ ", defaultMimeType=" + defaultMimeType
+				+ ", directoryMimeType=" + directoryMimeType
+				+ ", readmeFileName=" + readmeFileName
+				+ ", readmeFileMaxLength=" + readmeFileMaxLength
+				+ ", readmeFileCharset=" + readmeFileCharset + ", rootDir="
+				+ rootDir + ", rewriteRules=" + rewriteRules
+				+ ", basePathPattern=" + basePathPattern + "]";
 	}
 }

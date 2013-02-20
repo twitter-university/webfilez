@@ -21,15 +21,9 @@
   </env-entry>
 
   <env-entry>
-    <env-entry-name>input-buffer-size</env-entry-name>
+    <env-entry-name>buffer-size</env-entry-name>
     <env-entry-type>java.lang.Integer</env-entry-type>
-    <env-entry-value>2048</env-entry-value>
-  </env-entry>
-
-  <env-entry>
-    <env-entry-name>output-buffer-size</env-entry-name>
-    <env-entry-type>java.lang.Integer</env-entry-type>
-    <env-entry-value>2048</env-entry-value>
+    <env-entry-value>4096</env-entry-value>
   </env-entry>
 
   <env-entry>
@@ -99,6 +93,7 @@
   <servlet>
     <servlet-name>WebFilezServlet</servlet-name>
     <servlet-class>com.marakana.webfilez.WebFilezServlet</servlet-class>
+    <load-on-startup>1</load-on-startup>
     <multipart-config>
       <file-size-threshold>5242880</file-size-threshold>
     </multipart-config>
