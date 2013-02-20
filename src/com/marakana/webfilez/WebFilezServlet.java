@@ -70,13 +70,10 @@ import com.marakana.webfilez.FileUtil.PathHandler;
 import com.marakana.webfilez.WebUtil.Range;
 
 public final class WebFilezServlet extends HttpServlet {
-	private static final Pattern INVALID_SOURCE_PATH_PATTERN = Pattern
-			.compile("(\\.\\.)");
-	private static final Pattern INVALID_FILENAME_PATTERN = Pattern
-			.compile("(\\.\\.)|/|\\\\");
+	private static final Pattern INVALID_SOURCE_PATH_PATTERN = Pattern.compile("(\\.\\.)");
+	private static final Pattern INVALID_FILENAME_PATTERN = Pattern.compile("(\\.\\.)|/|\\\\");
 	private static final long serialVersionUID = 1L;
-	private static Logger logger = LoggerFactory
-			.getLogger(WebFilezServlet.class);
+	private static Logger logger = LoggerFactory.getLogger(WebFilezServlet.class);
 	protected static final String MULTIPART_BOUNDARY = "mrkn_webfilez_boundary";
 
 	private Charset DEFAULT_CHARSET = Charset.forName("UTF-8");
@@ -105,8 +102,7 @@ public final class WebFilezServlet extends HttpServlet {
 		try {
 			final Context ctx = new InitialContext();
 			try {
-				final Params params = asParams((Context) ctx
-						.lookup("java:comp/env/"));
+				final Params params = asParams((Context) ctx.lookup("java:comp/env/"));
 				this.bufferSize = params.getInteger("buffer-size", 4096);
 				this.directoryMimeType = params.getString(
 						"directory-mime-type", "x-directory/normal");
@@ -120,8 +116,7 @@ public final class WebFilezServlet extends HttpServlet {
 						"readme-file-charset", "UTF-8"));
 				final String rootDir = params.getString("root-dir");
 				this.rootDir = rootDir == null ? "." : rootDir;
-				this.rewriteRules = SearchAndReplace.parse(params
-						.getString("rewrite-rules"));
+				this.rewriteRules = SearchAndReplace.parse(params.getString("rewrite-rules"));
 				this.basePathPattern = Pattern.compile(params.getString(
 						"base-path-pattern", "^(/[^/]+/[0-9]+/files/).*"));
 				if (logger.isInfoEnabled()) {
@@ -144,8 +139,7 @@ public final class WebFilezServlet extends HttpServlet {
 			if (Files.isDirectory(file)) {
 				if (uri.endsWith("/")) {
 					if (isZip(request)
-							|| "zip_download".equals(request
-									.getParameter("_action"))) {
+							|| "zip_download".equals(request.getParameter("_action"))) {
 						try {
 							this.handleZipDownloadRequest(request, response,
 									file);
@@ -213,8 +207,7 @@ public final class WebFilezServlet extends HttpServlet {
 			logger.debug("Processing request to delete [" + file + "]");
 		}
 		if (Files.exists(file)) {
-			final long lastModified = Files.getLastModifiedTime(file)
-					.toMillis();
+			final long lastModified = Files.getLastModifiedTime(file).toMillis();
 			final String etag = generateETag(Files.size(file), lastModified);
 			if (ifMatch(request, etag)
 					&& ifUnmodifiedSince(request, lastModified)) {
@@ -270,8 +263,7 @@ public final class WebFilezServlet extends HttpServlet {
 									+ file + "]");
 					return;
 				} else {
-					final long lastModified = Files.getLastModifiedTime(file)
-							.toMillis();
+					final long lastModified = Files.getLastModifiedTime(file).toMillis();
 					final String etag = generateETag(Files.size(file),
 							lastModified);
 					if (ifMatch(request, etag)
@@ -418,8 +410,8 @@ public final class WebFilezServlet extends HttpServlet {
 					"Select at least one file to zip-download");
 		} else {
 			if (filename == null) {
-				filename = (files.size() == 1 ? files.get(0) : dir)
-						.getFileName() + ".zip";
+				filename = (files.size() == 1 ? files.get(0) : dir).getFileName()
+						+ ".zip";
 			}
 			response.setContentType("application/zip");
 			response.setHeader("Content-Disposition",
@@ -470,8 +462,7 @@ public final class WebFilezServlet extends HttpServlet {
 			jsonWriter.key("name").value(dir.getFileName());
 			jsonWriter.key("type").value(this.directoryMimeType);
 			jsonWriter.key("size").value(totalSize);
-			jsonWriter.key("lastModified")
-					.value(Files.getLastModifiedTime(dir));
+			jsonWriter.key("lastModified").value(Files.getLastModifiedTime(dir));
 			jsonWriter.key("writeAllowed").value(this.getWriteAllowed(request));
 			if (uri.length() > basePath.length() && uri.startsWith(basePath)) {
 				jsonWriter.key("parent").value(getParentUriPath(uri));
@@ -604,8 +595,7 @@ public final class WebFilezServlet extends HttpServlet {
 							+ "]; file cannot be read");
 		} else {
 			final long length = Files.size(file);
-			final long lastModified = Files.getLastModifiedTime(file)
-					.toMillis();
+			final long lastModified = Files.getLastModifiedTime(file).toMillis();
 			final String eTag = generateETag(length, lastModified);
 			final String contentType = getMimeType(file);
 			if (lastModified >= 0) {
@@ -664,8 +654,7 @@ public final class WebFilezServlet extends HttpServlet {
 					response.setContentType("multipart/byteranges; boundary="
 							+ MULTIPART_BOUNDARY);
 					if (!isHead(request)) {
-						final ServletOutputStream out = response
-								.getOutputStream();
+						final ServletOutputStream out = response.getOutputStream();
 						for (Range range : ranges) {
 							// Writing MIME header.
 							out.println();
@@ -781,12 +770,16 @@ public final class WebFilezServlet extends HttpServlet {
 		try {
 			try (final OutputStream out = Files.newOutputStream(file)) {
 				long bytesToRead = length;
-				byte[] b = new byte[this.bufferSize];
-				while (true) {
+				byte[] buffer = new byte[this.bufferSize];
+				while (bytesToRead > 0) {
 					int numRead;
 					try {
-						numRead = in.read(b, 0,
-								(int) min(b.length, bytesToRead));
+						numRead = in.read(buffer, 0,
+								(int) min(buffer.length, bytesToRead));
+						if (numRead == -1) {
+							break;
+						}
+						bytesToRead -= numRead;
 					} catch (IOException e) {
 						Files.deleteIfExists(file);
 						this.refuseBadRequest(request, response,
@@ -796,12 +789,7 @@ public final class WebFilezServlet extends HttpServlet {
 										+ "]. Aborting.", e);
 						return false;
 					}
-					if (numRead == -1 || bytesToRead == 0) {
-						break;
-					} else {
-						out.write(b, 0, numRead);
-					}
-					bytesToRead -= numRead;
+					out.write(buffer, 0, numRead);
 				}
 				if (bytesToRead != 0) {
 					if (logger.isWarnEnabled()) {
@@ -833,8 +821,8 @@ public final class WebFilezServlet extends HttpServlet {
 		final List<Path> files = this.getFilesFromRequest(request, dir);
 		if (files.size() == 1) {
 			final Path file = files.get(0);
-			zipFile = getUniqueFileInDirectory(dir, file.getFileName()
-					.toString(), ".zip");
+			zipFile = getUniqueFileInDirectory(dir,
+					file.getFileName().toString(), ".zip");
 			if (Files.isDirectory(file)) {
 				if (logger.isTraceEnabled()) {
 					logger.trace("Zipping directory [" + file + "] to ["
@@ -896,28 +884,38 @@ public final class WebFilezServlet extends HttpServlet {
 		}
 	}
 
-	private void handleCopy(Path dir, HttpServletRequest request,
+	private boolean isOverwrite(HttpServletRequest request) {
+		return Boolean.valueOf(request.getParameter("overwrite")).booleanValue();
+	}
+
+	private void handleCopy(Path targetDir, HttpServletRequest request,
 			HttpServletResponse response) throws Exception {
 		if (logger.isDebugEnabled()) {
-			logger.debug("Handling request to copy file to directory [" + dir
-					+ "]");
+			logger.debug("Handling request to copy file to directory ["
+					+ targetDir + "]");
 		}
 		try {
-			final Path sourceFile = this.getSourcePath(request);
-			if (Files.exists(sourceFile)) {
-				final Path destinationFile = sourceFile.getParent().equals(dir) ? getUniqueFileInDirectory(
-						dir, sourceFile.getFileName().toString()) : dir
-						.resolve(sourceFile.getFileName());
-				copy(sourceFile, destinationFile);
-				if (logger.isDebugEnabled()) {
-					logger.debug("Copied [" + sourceFile + "] to ["
-							+ destinationFile + "]");
+			final Path source = this.getSourcePath(request);
+			if (Files.exists(source)) {
+				final Path target = source.getParent().equals(targetDir) ? getUniqueFileInDirectory(
+						targetDir, source.getFileName().toString())
+						: targetDir.resolve(source.getFileName());
+				if (Files.exists(target) && !isOverwrite(request)) {
+					this.refuseBadRequest(request, response,
+							"Refusing to copy [" + source + "] to [" + target
+									+ "], which already exists.");
+				} else {
+					copy(source, target);
+					if (logger.isDebugEnabled()) {
+						logger.debug("Copied [" + source + "] to [" + target
+								+ "]");
+					}
+					this.sendFileInfoResponse(target, response);
 				}
-				this.sendFileInfoResponse(destinationFile, response);
 			} else {
 				this.refuseRequest(request, response,
 						HttpServletResponse.SC_NOT_FOUND, "Cannot copy ["
-								+ sourceFile + "] to directory [" + dir
+								+ source + "] to directory [" + targetDir
 								+ "] because the source file does not exist.");
 			}
 		} catch (IllegalArgumentException e) {
@@ -925,31 +923,48 @@ public final class WebFilezServlet extends HttpServlet {
 		}
 	}
 
-	private void handleMove(Path dir, HttpServletRequest request,
+	private void handleMove(Path targetDir, HttpServletRequest request,
 			HttpServletResponse response) throws Exception {
 		if (logger.isDebugEnabled()) {
-			logger.debug("Handling request to move file to directory [" + dir
-					+ "]");
+			logger.debug("Handling request to move file to directory ["
+					+ targetDir + "]");
 		}
 		try {
-			final Path sourceFile = this.getSourcePath(request);
-			final Path destinationFile = dir.resolve(sourceFile.getFileName());
-			if (sourceFile.equals(destinationFile)) {
-				this.refuseRequest(request, response,
-						HttpServletResponse.SC_NOT_FOUND, "Cannot move ["
-								+ sourceFile + "] over itself.");
-			} else if (Files.exists(sourceFile)) {
-				Files.move(sourceFile, destinationFile,
-						StandardCopyOption.REPLACE_EXISTING);
-				if (logger.isDebugEnabled()) {
-					logger.debug("Moved [" + sourceFile + "] to ["
-							+ destinationFile + "]");
+			final Path source = this.getSourcePath(request);
+			if (Files.exists(source)) {
+				final Path target = targetDir.resolve(source.getFileName());
+				if (Files.isSameFile(source, target)) {
+					this.refuseBadRequest(request, response, "Cannot move ["
+							+ source + "] over itself.");
+				} else {
+					if (Files.exists(target)) {
+						if (isOverwrite(request)) {
+							if (logger.isDebugEnabled()) {
+								logger.debug("Deleting [" + target
+										+ "] in preparation to move [" + source
+										+ "] over it");
+							}
+							delete(target);
+						} else {
+							this.refuseBadRequest(request, response,
+									"Refusing to move [" + source + "] to ["
+											+ target
+											+ "], which already exists.");
+							return;
+						}
+					}
+					Files.move(source, target,
+							StandardCopyOption.REPLACE_EXISTING);
+					if (logger.isDebugEnabled()) {
+						logger.debug("Moved [" + source + "] to [" + target
+								+ "]");
+					}
+					this.sendFileInfoResponse(target, response);
 				}
-				this.sendFileInfoResponse(destinationFile, response);
 			} else {
 				this.refuseRequest(request, response,
 						HttpServletResponse.SC_NOT_FOUND, "Cannot move ["
-								+ sourceFile + "] to directory [" + dir
+								+ source + "] to directory [" + targetDir
 								+ "] because the source file does not exist.");
 			}
 		} catch (IllegalArgumentException e) {
@@ -1149,8 +1164,7 @@ public final class WebFilezServlet extends HttpServlet {
 	}
 
 	private String getBasePath(HttpServletRequest request, boolean strict) {
-		String basePath = (String) request
-				.getAttribute(Constants.BASE_PATH_ATTR_NAME);
+		String basePath = (String) request.getAttribute(Constants.BASE_PATH_ATTR_NAME);
 		if (basePath == null) {
 			basePath = "/";
 		}

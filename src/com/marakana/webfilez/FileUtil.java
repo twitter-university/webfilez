@@ -9,6 +9,7 @@ import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.SimpleFileVisitor;
+import java.nio.file.StandardCopyOption;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.nio.file.attribute.FileTime;
 import java.util.Enumeration;
@@ -68,7 +69,7 @@ public class FileUtil {
 				}
 			}
 		} else {
-			Files.copy(source, destination);
+			Files.copy(source, destination, StandardCopyOption.REPLACE_EXISTING);
 		}
 		Files.setLastModifiedTime(destination,
 				Files.getLastModifiedTime(source));
@@ -143,8 +144,7 @@ public class FileUtil {
 		if (Files.exists(path) && Files.isRegularFile(path)) {
 			try (ZipFile zipFile = new ZipFile(path.toFile(), ZipFile.OPEN_READ)) {
 				long size = 0;
-				for (Enumeration<? extends ZipEntry> entries = zipFile
-						.entries(); entries.hasMoreElements();) {
+				for (Enumeration<? extends ZipEntry> entries = zipFile.entries(); entries.hasMoreElements();) {
 					ZipEntry entry = entries.nextElement();
 					if (!entry.isDirectory()) {
 						size += entry.getSize();
@@ -164,8 +164,8 @@ public class FileUtil {
 			@Override
 			public FileVisitResult visitFile(Path file,
 					BasicFileAttributes attrs) throws IOException {
-				zipFileToStream(file, relativeToPath.relativize(file)
-						.toString(), out);
+				zipFileToStream(file,
+						relativeToPath.relativize(file).toString(), out);
 				return FileVisitResult.CONTINUE;
 			}
 		});
@@ -223,8 +223,7 @@ public class FileUtil {
 			PathHandler pathHandler) throws ZipException, IOException {
 		try (ZipFile zipFile = new ZipFile(sourceFile.toFile(),
 				ZipFile.OPEN_READ)) {
-			for (Enumeration<? extends ZipEntry> entries = zipFile.entries(); entries
-					.hasMoreElements();) {
+			for (Enumeration<? extends ZipEntry> entries = zipFile.entries(); entries.hasMoreElements();) {
 				ZipEntry entry = entries.nextElement();
 				Path destinationFile = destinationDir.resolve(entry.getName());
 				if (entry.isDirectory()) {
