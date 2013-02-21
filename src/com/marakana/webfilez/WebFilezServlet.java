@@ -176,21 +176,24 @@ public final class WebFilezServlet extends HttpServlet {
 			if (!isHead(request)) {
 				// search for the closest folder that does exist
 				// until we get to directory root
-				while (uri != null && uri.startsWith(basePath)
-						&& !file.toString().equals(this.rootDir)) {
+				while (true) {
 					uri = getParentUriPath(uri);
 					file = file.getParent();
-					if (Files.exists(file)) {
-						if (logger.isDebugEnabled()) {
-							logger.debug("Attempting to recover. Redirecting to: "
-									+ uri);
-						}
-						response.sendRedirect(uri);
-						return;
+					if (uri == null || !uri.startsWith(basePath)
+							|| file.toString().equals(this.rootDir)) {
+						break; // give up
 					} else {
 						if (logger.isTraceEnabled()) {
 							logger.trace("Trying to see if [" + uri
 									+ "] exists.");
+						}
+						if (Files.exists(file)) {
+							if (logger.isDebugEnabled()) {
+								logger.debug("Attempting to recover. Redirecting to: "
+										+ uri);
+							}
+							response.sendRedirect(uri);
+							return;
 						}
 					}
 				}
@@ -1181,7 +1184,8 @@ public final class WebFilezServlet extends HttpServlet {
 			logger.warn("Refusing request with [" + responseCode + "]. " + msg,
 					cause);
 		}
-		response.setStatus(responseCode);
+		// response.setStatus(responseCode);
+		response.sendError(responseCode);
 	}
 
 	private void refuseBadRequest(HttpServletRequest request,
