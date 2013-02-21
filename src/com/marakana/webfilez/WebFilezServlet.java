@@ -136,7 +136,8 @@ public final class WebFilezServlet extends HttpServlet {
 		final String basePath = this.getBasePath(request, true);
 		String uri = request.getRequestURI();
 		Path file = this.getRequestFile(request);
-		if (fileExistsOrItIsTheBasePathAndIsCreated(file, uri, basePath)) {
+		if (fileExistsOrItIsTheBasePathAndIsCreated(file, uri, basePath,
+				this.getWriteAllowed(request))) {
 			if (Files.isDirectory(file)) {
 				if (uri.endsWith("/")) {
 					if (isZip(request)
@@ -321,7 +322,8 @@ public final class WebFilezServlet extends HttpServlet {
 							+ request.getRequestURI());
 		} else {
 			final Path file = getRequestFile(request);
-			if (fileExistsOrItIsTheBasePathAndIsCreated(file, uri, basePath)) {
+			if (fileExistsOrItIsTheBasePathAndIsCreated(file, uri, basePath,
+					this.getWriteAllowed(request))) {
 				try {
 					if (Files.isDirectory(file)) {
 						switch (action) {
@@ -1274,13 +1276,14 @@ public final class WebFilezServlet extends HttpServlet {
 	}
 
 	private boolean fileExistsOrItIsTheBasePathAndIsCreated(Path file,
-			String uri, String basePath) throws IOException {
+			String uri, String basePath, boolean writeAllowed)
+			throws IOException {
 		if (Files.exists(file)) {
 			if (logger.isTraceEnabled()) {
 				logger.trace("File/directory [" + file + "] already exists");
 			}
 			return true;
-		} else if (uri != null && uri.equals(basePath)) {
+		} else if (uri != null && uri.equals(basePath) && writeAllowed) {
 			Files.createDirectories(file);
 			if (logger.isDebugEnabled()) {
 				logger.debug("Created the base dir [" + file + "]");
@@ -1291,7 +1294,7 @@ public final class WebFilezServlet extends HttpServlet {
 				logger.trace("File/directory [" + file
 						+ "] does not exist and uri=[" + uri
 						+ "] is not the same as the base path=[" + basePath
-						+ "]");
+						+ "] or write is not allowed");
 			}
 			return false;
 		}
