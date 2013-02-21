@@ -81,15 +81,11 @@ public class AuthFilter implements Filter {
 		if (authToken == null) {
 			Cookie cookie = getCookie(httpRequest, this.tokenName);
 			if (cookie == null) {
-				String authorizationHeader = httpRequest
-						.getHeader("Authorization");
+				String authorizationHeader = httpRequest.getHeader("Authorization");
 				if (authorizationHeader != null
-						&& authorizationHeader
-								.startsWith(this.authorizationHeaderType)
-						&& authorizationHeader.length() > authorizationHeaderType
-								.length() + 1) {
-					authToken = authorizationHeader
-							.substring(authorizationHeaderType.length() + 1);
+						&& authorizationHeader.startsWith(this.authorizationHeaderType)
+						&& authorizationHeader.length() > authorizationHeaderType.length() + 1) {
+					authToken = authorizationHeader.substring(authorizationHeaderType.length() + 1);
 					if (logger.isTraceEnabled()) {
 						logger.trace("Got [Authorization "
 								+ this.authorizationHeaderType + "]=["
@@ -124,16 +120,15 @@ public class AuthFilter implements Filter {
 			boolean isWrite = isWrite(httpRequest);
 			if (!isRead && !isWrite) {
 				if (logger.isWarnEnabled()) {
-					logger.warn(String
-							.format("Unsupported %s request from user #%d (%s) to access %s",
-									httpRequest.getMethod(), auth.getUserId(),
-									auth.getUserDescription(),
-									httpRequest.getRemoteAddr(),
-									httpRequest.getRequestURI()));
+					logger.warn(String.format(
+							"Unsupported %s request from user #%d (%s) to access %s",
+							httpRequest.getMethod(), auth.getUserId(),
+							auth.getUserDescription(),
+							httpRequest.getRemoteAddr(),
+							httpRequest.getRequestURI()));
 				}
 				httpResponse.setHeader("Allow", ALLOWED_METHODS_HEADER);
-				httpResponse
-						.setStatus(HttpServletResponse.SC_METHOD_NOT_ALLOWED);
+				httpResponse.setStatus(HttpServletResponse.SC_METHOD_NOT_ALLOWED);
 			} else if (!actualPath.startsWith(auth.getBasePath())
 					|| actualPath.contains("..")) {
 				redirectToAuthUrl(httpRequest, httpResponse, "unsupported-path");
@@ -142,12 +137,12 @@ public class AuthFilter implements Filter {
 			} else if ((isRead && !auth.getAccess().contains(READ))
 					|| (isWrite && !auth.getAccess().contains(WRITE))) {
 				if (logger.isWarnEnabled()) {
-					logger.warn(String
-							.format("Unauthorized %s request from user #%d (%s) to access %s. Removing cookie and refusing request.",
-									httpRequest.getMethod(), auth.getUserId(),
-									auth.getUserDescription(),
-									httpRequest.getRemoteAddr(),
-									httpRequest.getRequestURI()));
+					logger.warn(String.format(
+							"Unauthorized %s request from user #%d (%s) to access %s. Removing cookie and refusing request.",
+							httpRequest.getMethod(), auth.getUserId(),
+							auth.getUserDescription(),
+							httpRequest.getRemoteAddr(),
+							httpRequest.getRequestURI()));
 				}
 				// remove cookie by setting its TTL to 1 second?
 				Cookie cookie = buildCookie(this.tokenName, authToken,
@@ -175,18 +170,18 @@ public class AuthFilter implements Filter {
 							auth.getBasePath());
 					httpRequest.setAttribute(Constants.DESCRIPTION_ATTR_NAME,
 							auth.getDescription());
-					httpRequest.setAttribute(Constants.READ_ALLOWED, auth
-							.getAccess().contains(Access.READ));
-					httpRequest.setAttribute(Constants.WRITE_ALLOWED, auth
-							.getAccess().contains(Access.WRITE));
+					httpRequest.setAttribute(Constants.QUOTA, auth.getQuota());
+					httpRequest.setAttribute(Constants.READ_ALLOWED,
+							auth.getAccess().contains(Access.READ));
+					httpRequest.setAttribute(Constants.WRITE_ALLOWED,
+							auth.getAccess().contains(Access.WRITE));
 					if (logger.isTraceEnabled()) {
-						logger.trace(String
-								.format("Authorized user #%d (%s) from %s to %s %s for %s",
-										auth.getUserId(),
-										auth.getUserDescription(),
-										httpRequest.getRemoteAddr(),
-										httpRequest.getMethod(), actualPath,
-										httpRequest.getHeader("Accept")));
+						logger.trace(String.format(
+								"Authorized user #%d (%s) from %s to %s %s for %s",
+								auth.getUserId(), auth.getUserDescription(),
+								httpRequest.getRemoteAddr(),
+								httpRequest.getMethod(), actualPath,
+								httpRequest.getHeader("Accept")));
 					}
 					chain.doFilter(request, response);
 				}

@@ -22,6 +22,12 @@
   <div id="description">${description}</div>
   <div id="status"><span></span></div>
   <form id="form" action="" method="post">
+    <div id="info">
+      <span class="dir-file-count"></span>
+      <span class="dir-size"></span>
+      <span class="dir-last-modified"></span>
+      <span class="quota"></span>
+    </div>
     <div id="toolbar">
       <button id="refresh_button" type="button" class="button">Refresh</button>
       <button id="newdir_button" type="button" class="button write-operation">New Directory</button>

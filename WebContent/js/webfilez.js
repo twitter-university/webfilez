@@ -255,6 +255,11 @@ function list(url) {
           tr.append($('<td>').addClass('file-last-modified-date').html(''));
           tbody.append(tr);
         }
+        $("#info .dir-file-count").html(response.files.length + " item(s)");
+        $("#info .dir-size").html("using " + addCommas(response.size) + " bytes");
+        if (response.quota > 0) {
+          $("#info .quota").html("(quota " + addCommas(response.quota) + " bytes)");
+        }
         for ( var i = 0; i < response.files.length; i++) {
           tbody.append(fileToRow(response.files[i]));
         }
@@ -267,9 +272,9 @@ function list(url) {
       }).fail(handleError);
 }
 
-function handleError(jqXHR, textStatus) {
-  log("Error [" + jqXHR.status + "]: " + textStatus);
-  switch (jqXHR.status) {
+function handleError(xhr) {
+  log("Error [" + xhr.status + "]: " + xhr.statusText);
+  switch (xhr.status) {
   case 400:
     setStatus("Operation refused.");
     break;
@@ -289,6 +294,9 @@ function handleError(jqXHR, textStatus) {
     break;
   case 412:
     setStatus("Concurrent modification detetected. Reload and try again.");
+    break;
+  case 413:
+    setStatus("Exceeded file usage quota. Remove some files and try again.");
     break;
   case 500:
     if (confirm("Operation failed. We recommend that you reload this page and try again.")) {
@@ -499,6 +507,7 @@ function uploadRow(tr, numberOfFilesUploaded) {
   }
   var upload = tr.data();
   if (!upload || upload.started) {
+    log("Nothing to upload or currently uploading. Aborting.");
     return;
   } else {
     upload.started = true;
@@ -518,13 +527,22 @@ function uploadRow(tr, numberOfFilesUploaded) {
     }
   }, false);
   xhr.addEventListener("load", function(event) {
-    var f = JSON.parse(event.target.responseText);
-    log("Uploaded " + f.name + " as " + upload.uri);
-    progressBar.remove();
-    status.removeClass("pending").addClass("success");
-    tr.data(null);
-    button.html("Remove");
-    uploadRow(tr.next(), numberOfFilesUploaded + 1);
+    if (this.status >= 200 && this.status <= 299) {
+      var f = JSON.parse(this.responseText);
+      log("Uploaded " + f.name + " as " + upload.uri);
+      progressBar.remove();
+      status.removeClass("pending").addClass("success");
+      tr.data(null);
+      button.html("Remove");
+      uploadRow(tr.next(), numberOfFilesUploaded + 1);
+    } else {
+      log("Failed to upload " + upload.uri);
+      handleError(this);
+      progressBar.remove();
+      status.removeClass("pending").addClass("failed");
+      button.html("Remove");
+      upload.started = false;
+    }
   }, false);
   xhr.addEventListener("error", function(event) {
     log("Error uploading " + upload.uri);
@@ -561,11 +579,13 @@ function setupUploadDialog() {
     modal : true,
     buttons : {
       Upload : function() {
+        log("Starting upload");
         $(this).dialog("option", "closeOnEscape", false);
         $("#upload-dialog table tbody tr td.file-name .status").addClass("pending");
         uploadRow($(this).find("table tbody tr").first(), 0);
       },
       Cancel : function() {
+        log("Cancelling upload");
         $(this).find("table tbody tr").each(function() { abortUpload($(this)); });
         $(this).find("table tbody").empty();
         $(this).dialog("destroy");

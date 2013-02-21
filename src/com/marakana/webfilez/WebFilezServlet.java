@@ -4,6 +4,7 @@ import static com.marakana.webfilez.FileUtil.copy;
 import static com.marakana.webfilez.FileUtil.delete;
 import static com.marakana.webfilez.FileUtil.getUniqueFileInDirectory;
 import static com.marakana.webfilez.FileUtil.size;
+import static com.marakana.webfilez.FileUtil.sizeOfZip;
 import static com.marakana.webfilez.FileUtil.unzip;
 import static com.marakana.webfilez.FileUtil.zipDirectory;
 import static com.marakana.webfilez.FileUtil.zipFile;
@@ -268,7 +269,9 @@ public final class WebFilezServlet extends HttpServlet {
 							lastModified);
 					if (ifMatch(request, etag)
 							&& ifUnmodifiedSince(request, lastModified)) {
-						this.handleUploadToFile(file, request, response);
+						if (!this.handleSingleUpload(file, request, response)) {
+							return;
+						}
 					} else {
 						this.refuseRequest(request, response,
 								HttpServletResponse.SC_PRECONDITION_FAILED,
@@ -286,19 +289,9 @@ public final class WebFilezServlet extends HttpServlet {
 					logger.debug("Created directory [" + file + "]");
 				}
 			} else {
-				Path parentDir = file.getParent();
-				if (!Files.exists(parentDir)) {
-					Files.createDirectories(parentDir);
-					if (logger.isDebugEnabled()) {
-						logger.debug("Created parent directory for [" + file
-								+ "]");
-					}
+				if (!this.handleSingleUpload(file, request, response)) {
+					return;
 				}
-				Files.createFile(file);
-				if (logger.isDebugEnabled()) {
-					logger.debug("Created new file [" + file + "]");
-				}
-				this.handleUploadToFile(file, request, response);
 			}
 			responseCode = HttpServletResponse.SC_CREATED;
 		}
@@ -462,6 +455,7 @@ public final class WebFilezServlet extends HttpServlet {
 			jsonWriter.key("name").value(dir.getFileName());
 			jsonWriter.key("type").value(this.directoryMimeType);
 			jsonWriter.key("size").value(totalSize);
+			jsonWriter.key("quota").value(this.getQuota(request));
 			jsonWriter.key("lastModified").value(Files.getLastModifiedTime(dir));
 			jsonWriter.key("writeAllowed").value(this.getWriteAllowed(request));
 			if (uri.length() > basePath.length() && uri.startsWith(basePath)) {
@@ -683,6 +677,9 @@ public final class WebFilezServlet extends HttpServlet {
 		response.setContentType("text/plain");
 		response.setCharacterEncoding("UTF-8");
 		final Collection<Path> uploadedFiles = new LinkedList<>();
+		final long quota = this.getQuota(request);
+		long usage = quota > 0 ? this.getUsage(this.getBasePath(request, true))
+				: 0;
 		for (Part part : parts) {
 			final String filename = getFileName(part);
 			final Path file = this.resolveSafe(dir, filename);
@@ -692,9 +689,16 @@ public final class WebFilezServlet extends HttpServlet {
 								+ "]. Aborting.");
 				return;
 			} else {
-				if (handleUploadToFile(part.getInputStream(), part.getSize(),
-						file, request, response)) {
+				final long partSize = part.getSize();
+				if (quota > 0 && usage + partSize > quota) {
+					this.refuseOverQuotaRequest(request, response, "upload "
+							+ file, partSize, usage, quota);
+					return;
+				}
+				if (handleSingleUpload(part.getInputStream(), partSize, file,
+						request, response)) {
 					uploadedFiles.add(file);
+					usage += Files.size(file);
 				} else {
 					return;
 				}
@@ -703,7 +707,7 @@ public final class WebFilezServlet extends HttpServlet {
 		sendFileInfoResponse(uploadedFiles, response);
 	}
 
-	private void handleUploadToFile(final Path file,
+	private boolean handleSingleUpload(final Path target,
 			final HttpServletRequest request, final HttpServletResponse response)
 			throws ServletException, IOException {
 		InputStream in = null;
@@ -713,15 +717,15 @@ public final class WebFilezServlet extends HttpServlet {
 			try {
 				parts = request.getParts();
 			} catch (IOException e) {
-				Files.deleteIfExists(file);
+				Files.deleteIfExists(target);
 				this.refuseBadRequest(request, response,
 						"Failed to parse data parts from the client ["
 								+ request.getRemoteAddr()
-								+ "] while writing file [" + file
+								+ "] while writing file [" + target
 								+ "]. Aborting.");
-				return;
+				return false;
 			}
-			final String fileName = file.getFileName().toString();
+			final String fileName = target.getFileName().toString();
 			if (parts.size() == 1) {
 				final Part part = parts.iterator().next();
 				final String partName = getFileName(part);
@@ -735,13 +739,13 @@ public final class WebFilezServlet extends HttpServlet {
 				in = part.getInputStream();
 				if (logger.isDebugEnabled()) {
 					logger.debug("Uploading [" + contentLength
-							+ "] bytes from part to [" + file + "]");
+							+ "] bytes from part to [" + target + "]");
 				}
 			} else {
 				this.refuseBadRequest(request, response,
 						"Expecting to upload one part to  [" + fileName
 								+ "] but got [" + parts.size() + "]. Aborting.");
-				return;
+				return false;
 			}
 		}
 		if (in == null) {
@@ -749,43 +753,62 @@ public final class WebFilezServlet extends HttpServlet {
 			if (contentLength > 0) {
 				if (logger.isDebugEnabled()) {
 					logger.debug("Uploading [" + contentLength
-							+ "] bytes from requst to [" + file + "]");
+							+ "] bytes from requst to [" + target + "]");
 				}
 				in = request.getInputStream();
-			} else {
-				if (logger.isTraceEnabled()) {
-					logger.trace("Nothing to upload to [" + file + "]");
-				}
 			}
 		}
-		if (in != null) {
-			handleUploadToFile(in, contentLength, file, request, response);
+		final long quota = this.getQuota(request);
+		if (quota > 0) {
+			final long usage = this.getUsage(this.getBasePath(request, true));
+			if (usage + contentLength > quota) {
+				refuseOverQuotaRequest(request, response, "upload " + target,
+						contentLength, usage, quota);
+				return false;
+			}
 		}
+		Path parentDir = target.getParent();
+		if (!Files.exists(parentDir)) {
+			Files.createDirectories(parentDir);
+			if (logger.isDebugEnabled()) {
+				logger.debug("Created parent directory for [" + target + "]");
+			}
+		}
+		if (in == null || contentLength > 0) {
+			Files.createFile(target);
+			if (logger.isDebugEnabled()) {
+				logger.debug("Created new file [" + target + "]");
+			}
+		} else {
+			this.handleSingleUpload(in, contentLength, target, request,
+					response);
+		}
+		return true;
 	}
 
-	private boolean handleUploadToFile(final InputStream in, final long length,
-			final Path file, final HttpServletRequest request,
-			final HttpServletResponse response) throws ServletException,
-			IOException {
+	private boolean handleSingleUpload(final InputStream sourceStream,
+			final long sourceLength, final Path target,
+			final HttpServletRequest request, final HttpServletResponse response)
+			throws ServletException, IOException {
 		try {
-			try (final OutputStream out = Files.newOutputStream(file)) {
-				long bytesToRead = length;
+			try (final OutputStream out = Files.newOutputStream(target)) {
+				long bytesToRead = sourceLength;
 				byte[] buffer = new byte[this.bufferSize];
 				while (bytesToRead > 0) {
 					int numRead;
 					try {
-						numRead = in.read(buffer, 0,
+						numRead = sourceStream.read(buffer, 0,
 								(int) min(buffer.length, bytesToRead));
 						if (numRead == -1) {
 							break;
 						}
 						bytesToRead -= numRead;
 					} catch (IOException e) {
-						Files.deleteIfExists(file);
+						Files.deleteIfExists(target);
 						this.refuseBadRequest(request, response,
 								"Failed to read data from the client ["
 										+ request.getRemoteAddr()
-										+ "] while writing file [" + file
+										+ "] while writing file [" + target
 										+ "]. Aborting.", e);
 						return false;
 					}
@@ -793,20 +816,20 @@ public final class WebFilezServlet extends HttpServlet {
 				}
 				if (bytesToRead != 0) {
 					if (logger.isWarnEnabled()) {
-						logger.warn("Uploaded [" + (length - bytesToRead)
-								+ "] bytes to [" + file + "] but expected ["
-								+ length + "]. Ignoring.");
+						logger.warn("Uploaded [" + (sourceLength - bytesToRead)
+								+ "] bytes to [" + target + "] but expected ["
+								+ sourceLength + "]. Ignoring.");
 					}
 				} else {
 					if (logger.isDebugEnabled()) {
-						logger.debug("Uploaded [" + length + "] bytes to ["
-								+ file + "]");
+						logger.debug("Uploaded [" + sourceLength
+								+ "] bytes to [" + target + "]");
 					}
 				}
 				return true;
 			}
 		} finally {
-			in.close();
+			sourceStream.close();
 		}
 	}
 
@@ -851,6 +874,16 @@ public final class WebFilezServlet extends HttpServlet {
 			HttpServletResponse response) throws Exception {
 		if (logger.isDebugEnabled()) {
 			logger.debug("Handling request to unzip file [" + file + "]");
+		}
+		final long quota = this.getQuota(request);
+		if (quota > 0) {
+			final long usage = this.getUsage(this.getBasePath(request, true));
+			final long sizeOfZip = sizeOfZip(file);
+			if (sizeOfZip + usage > quota) {
+				refuseOverQuotaRequest(request, response, "unzip " + file,
+						sizeOfZip, usage, quota);
+				return;
+			}
 		}
 		final Path dir = file.getParent();
 		final Collection<Path> immediateCreatedFiles = new LinkedList<>();
@@ -905,6 +938,18 @@ public final class WebFilezServlet extends HttpServlet {
 							"Refusing to copy [" + source + "] to [" + target
 									+ "], which already exists.");
 				} else {
+					final long quota = this.getQuota(request);
+					if (quota > 0) {
+						final long usage = this.getUsage(this.getBasePath(
+								request, true));
+						final long need = size(source);
+						if (usage + need > quota) {
+							refuseOverQuotaRequest(request, response, "copy "
+									+ source + " to " + target + target, need,
+									usage, quota);
+							return;
+						}
+					}
 					copy(source, target);
 					if (logger.isDebugEnabled()) {
 						logger.debug("Copied [" + source + "] to [" + target
@@ -1150,6 +1195,17 @@ public final class WebFilezServlet extends HttpServlet {
 				msg);
 	}
 
+	private void refuseOverQuotaRequest(HttpServletRequest request,
+			HttpServletResponse response, String msg, long need, long usage,
+			long quota) throws ServletException, IOException {
+		this.refuseRequest(request, response,
+				HttpServletResponse.SC_REQUEST_ENTITY_TOO_LARGE, "Refusing to "
+						+ msg + ". We need [" + need
+						+ "] bytes, we are using [" + usage
+						+ "], and we have available [" + (quota - usage)
+						+ "] before we reach our quota[" + quota + "]");
+	}
+
 	private void sendServerFailure(HttpServletRequest request,
 			HttpServletResponse response, String msg, Throwable cause)
 			throws ServletException, IOException {
@@ -1161,6 +1217,30 @@ public final class WebFilezServlet extends HttpServlet {
 			HttpServletResponse response, String msg) throws ServletException,
 			IOException {
 		this.sendServerFailure(request, response, msg, null);
+	}
+
+	private long getQuota(HttpServletRequest request) {
+		Long quota = (Long) request.getAttribute(Constants.QUOTA);
+		if (quota == null) {
+			return 0;
+		} else {
+			return quota;
+		}
+	}
+
+	private long getUsage(String basePath) throws IOException {
+		long t = 0;
+		final Path path = this.resolvePath(basePath);
+		if (logger.isTraceEnabled()) {
+			t = System.nanoTime();
+		}
+		final long usage = size(path);
+		if (logger.isTraceEnabled()) {
+			t = System.nanoTime() - t;
+			logger.trace(path + " uses " + usage + " bytes (computed in "
+					+ (t / 1000000) + " ms)");
+		}
+		return usage;
 	}
 
 	private String getBasePath(HttpServletRequest request, boolean strict) {

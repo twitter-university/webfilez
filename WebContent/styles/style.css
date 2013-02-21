@@ -33,7 +33,7 @@ dt {
 }
 
 dd {
-	padding: margin-top:             0.3em;
+	padding: margin-top:              0.3em;
 	margin-bottom: 1em;
 }
 
@@ -182,6 +182,15 @@ table tbody tr:HOVER .inline-button {
 	width: 100%;
 }
 
+#info {
+	float: right;
+	margin-left: 1em;
+}
+
+#info .quota {
+	color: #ccc;
+}
+
 #readme {
 	margin-top: 1em;
 }
@@ -206,7 +215,7 @@ table tbody tr:HOVER .inline-button {
 	width: 100%;
 	border: 1px solid gray;
 	border-radius: 0.25em;
-    font-size: 0.9em;
+	font-size: 0.9em;
 }
 
 #upload-dialog table .inline-button {
@@ -219,14 +228,14 @@ table tbody tr:HOVER .inline-button {
 }
 
 #upload-dialog table tbody tr td.file-name .status {
-    float: right;
+	float: right;
 	margin-left: 0.5em;
 	display: inline-block;
 	vertical-align: baseline;
-    background: url('/images/icons/bullet_white.png') no-repeat;
-    width: 16px;
-    height: 16px;
-    padding: 0;
+	background: url('/images/icons/bullet_white.png') no-repeat;
+	width: 16px;
+	height: 16px;
+	padding: 0;
 }
 
 #upload-dialog table tbody tr td.file-name .pending {
