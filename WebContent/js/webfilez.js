@@ -202,7 +202,7 @@ function fileToRow(file) {
   var td = $('<td>').addClass('file-select').append(
       $('<input>').attr('type', 'checkbox').attr('name', 'file').attr('value', file.name));
   tr.append(td);
-  td = $('<td>').addClass('file-name').append($('<a>').attr('href', toUri(name)).html(name));
+  td = $('<td>').attr('data-sort-value', file.name).addClass('file-name').append($('<a>').attr('href', toUri(name)).html(name));
   if (writeAllowed) {
     td.append($('<button>').addClass('inline-button').addClass('delete-button').addClass(
         'write-operation').attr('type', 'button').click(deleteFile).html('Delete'));
