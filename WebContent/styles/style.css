@@ -33,7 +33,7 @@ dt {
 }
 
 dd {
-	padding: margin-top:              0.3em;
+	padding: margin-top:                  0.3em;
 	margin-bottom: 1em;
 }
 
@@ -84,6 +84,18 @@ tr.file td.file-name a:hover {
 	background-image: url('/images/icons/file_download.gif');
 }
 
+#listing th {
+	cursor: pointer;
+}
+
+th.sorted.ascending:AFTER {
+	content: " \2191";
+}
+
+th.sorted.descending:AFTER {
+	content: " \2193";
+}
+
 td.file-name .progress-bar {
 	float: right;
 	margin-left: 2em;
@@ -91,7 +103,7 @@ td.file-name .progress-bar {
 	vertical-align: baseline;
 }
 
-thead tr th {
+thead tr th, thead tr td {
 	background-color: #000;
 	color: #fff;
 }

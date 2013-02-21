@@ -55,6 +55,7 @@ function setupRename() {
         newNameInput.remove();
         a.show();
         buttons.show();
+        resort();
       }).fail(handleError);
       return false;
     }
@@ -85,6 +86,7 @@ function setupNewResource(file) {
       }).done(function(file) {
         tr.replaceWith(fileToRow(file));
         setStatus("Created '" + file.name + "'");
+        resort();
       }).fail(handleError);
       return false;
     }
@@ -115,6 +117,7 @@ function unzip() {
       tr.effect("highlight", {}, 500);
     }
     setStatus("Unzipped '" + filename + "'");
+    resort();
   }).fail(handleError);
 }
 
@@ -220,9 +223,9 @@ function fileToRow(file) {
         'type', 'button').click(downloadAsZip).html('Download as ZIP'));
   }
   tr.append(td);
-  td = $('<td>').addClass('file-size').html(addCommas(file.size));
+  td = $('<td>').attr('data-sort-value', file.size).addClass('file-size').html(addCommas(file.size));
   tr.append(td);
-  td = $('<td>').addClass('file-last-modified-date').html(toDateAndTime(file.lastModified));
+  td = $('<td>').attr('data-sort-value', file.lastModified).addClass('file-last-modified-date').html(toDateAndTime(file.lastModified));
   tr.append(td);
   return tr;
 }
@@ -236,40 +239,52 @@ function list(url) {
   $.ajax({
     url : url,
     type : "GET",
-    dataType : 'json',
+    dataType : "json",
     cache : false,
     context : $(this)
-  }).done(
-      function(response) {
-        document.title = response.uri;
-        baseUrl = response.uri;
-        $("h1").html(decodeURI(response.uri));
-        var tbody = $("#listing").find("tbody");
-        tbody.empty();
-        if (response.parent) {
-          var tr = $('<tr>').addClass('directory');
-          tr.append($('<td>').addClass('file-select').html(''));
-          tr.append($('<td>').addClass('file-name').append(
-              $('<a>').attr('href', response.parent).html('..')));
-          tr.append($('<td>').addClass('file-size').html(''));
-          tr.append($('<td>').addClass('file-last-modified-date').html(''));
-          tbody.append(tr);
-        }
-        $("#info .dir-file-count").html(response.files.length + " item(s)");
-        $("#info .dir-size").html("using " + addCommas(response.size) + " bytes");
-        if (response.quota > 0) {
-          $("#info .quota").html("(quota " + addCommas(response.quota) + " bytes)");
-        }
-        for ( var i = 0; i < response.files.length; i++) {
-          tbody.append(fileToRow(response.files[i]));
-        }
-        var readme = $("#readme");
-        if (response.readme) {
-          readme.html(response.readme);
-        } else {
-          readme.empty();
-        }
-      }).fail(handleError);
+  }).done(function(response) {
+    document.title = response.uri;
+    baseUrl = response.uri;
+    $("h1").html(decodeURI(response.uri));
+    var table = $("#listing");
+    var tablesort = table.data("tablesort");
+    if (tablesort) {
+      tablesort.destroy();
+    }
+    var tbody = table.find("tbody");
+    tbody.empty();
+    if (response.parent) {
+      var tr = $('<tr>').addClass('directory');
+      tr.append($('<td>').addClass('file-select').html(''));
+      tr.append($('<td>').addClass('file-name').append(
+          $('<a>').attr('href', response.parent).html('..')));
+      tr.append($('<td>').addClass('file-size').html(''));
+      tr.append($('<td>').addClass('file-last-modified-date').html(''));
+      tbody.append(tr);
+    }
+    $("#info .dir-file-count").html(response.files.length + " item(s)");
+    $("#info .dir-size").html("using " + addCommas(response.size) + " bytes");
+    if (response.quota > 0) {
+      $("#info .quota").html("(quota " + addCommas(response.quota) + " bytes)");
+    }
+    for ( var i = 0; i < response.files.length; i++) {
+      tbody.append(fileToRow(response.files[i]));
+    }
+    var readme = $("#readme");
+    if (response.readme) {
+      readme.html(response.readme);
+    } else {
+      readme.empty();
+    }
+    table.tablesort();
+  }).fail(handleError);
+}
+
+function resort() {
+  var tablesort = $("#listing").data("tablesort");
+  if (tablesort && tablesort.index != null) {
+    tablesort.sort(tablesort.$th, tablesort.direction);
+  }
 }
 
 function handleError(xhr) {
@@ -377,6 +392,7 @@ function handleZip() {
     var tr = fileToRow(file);
     $("#listing").find("tbody").append(tr);
     tr.effect("highlight", {}, 500);
+    resort();
   }).fail(handleError);
   return false;
 }
@@ -391,13 +407,13 @@ function handleDownloadZip() {
 }
 
 function getSelectedFileNames() {
-  return $('td.file-select input:checkbox:checked').map(function() {
+  return $('tbody td.file-select input:checkbox:checked').map(function() {
     return this.value;
   }).get();
 }
 
 function hasSelectedFileNames() {
-  return $('td.file-select input:checkbox:checked').length > 0;
+  return $('tbody td.file-select input:checkbox:checked').length > 0;
 }
 
 function setEnabledStatus(element, enabled) {
@@ -699,6 +715,7 @@ function handleSinglePaste(action, paths) {
     }).fail(handleError);
   } else {
     log("Done executing " + action);
+    resort();
   }
 }
 
@@ -743,8 +760,8 @@ $(document).ready(function() {
     setEnabledStatusOnActionButtons(this.checked || hasSelectedFileNames());
   });
 
-  $("th.file-select input[type='checkbox']").click(function() {
-    $("td.file-select input[type='checkbox']").attr('checked', this.checked);
+  $("thead td.file-select input[type='checkbox']").click(function() {
+    $("tbody td.file-select input[type='checkbox']").attr('checked', this.checked);
   });
 
   $("#refresh_button").click(handleRefresh);

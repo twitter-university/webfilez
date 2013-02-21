@@ -13,6 +13,7 @@
 <script type="text/javascript" src="//ajax.googleapis.com/ajax/libs/jquery/1.8.3/jquery.min.js"></script>
 <script type="text/javascript" src="//ajax.googleapis.com/ajax/libs/jqueryui/1.9.2/jquery-ui.min.js"></script>  
 <script type="text/javascript" src="/js/modernizr.js"></script>
+<script type="text/javascript" src="/js/jquery.tablesort.min.js"></script>
 <script type="text/javascript" src="/js/webfilez.js?v=<w:lastModified filePath='/js/webfilez.js'/>"></script>
 
 <title>Listing...</title>
@@ -44,7 +45,7 @@
     <table id="listing">
       <thead>
         <tr>
-          <th class="file-select"><input type="checkbox" id="toggle" name="toggle" /></th>
+          <td class="file-select"><input type="checkbox" id="toggle" name="toggle" /></td>
           <th class="file-name-header">Name</th>
           <th class="file-size-header">Size</th>
           <th class="file-last-modified-date-header">Last Modified</th>
