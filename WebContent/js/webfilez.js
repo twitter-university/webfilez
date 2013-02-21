@@ -304,8 +304,7 @@ function handleError(xhr) {
     setStatus("Operation not allowed.");
     break;
   case 404:
-    setStatus("File/directory no longer exists. Refreshing the list.");
-    list(window.location.pathname);
+    setStatus("The file file/directory you requested does not exists. You may try refreshing the list.");
     break;
   case 412:
     setStatus("Concurrent modification detetected. Reload and try again.");
