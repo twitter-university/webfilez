@@ -774,7 +774,7 @@ public final class WebFilezServlet extends HttpServlet {
 				logger.debug("Created parent directory for [" + target + "]");
 			}
 		}
-		if (in == null || contentLength > 0) {
+		if (in == null || contentLength == 0) {
 			Files.createFile(target);
 			if (logger.isDebugEnabled()) {
 				logger.debug("Created new file [" + target + "]");
