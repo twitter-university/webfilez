@@ -983,7 +983,7 @@ public final class WebFilezServlet extends HttpServlet {
 			final Path source = this.getSourcePath(request);
 			if (Files.exists(source)) {
 				final Path target = targetDir.resolve(source.getFileName());
-				if (Files.isSameFile(source, target)) {
+				if (source.equals(target)) {
 					this.refuseBadRequest(request, response, "Cannot move ["
 							+ source + "] over itself.");
 				} else {
