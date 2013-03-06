@@ -77,8 +77,6 @@
     <url-pattern>/class/*</url-pattern>
     <url-pattern>/course/*</url-pattern>
     <url-pattern>/user/*</url-pattern>
-    <url-pattern>/static/*</url-pattern>
-    <url-pattern>/files/*</url-pattern>
   </filter-mapping>
 
   <filter-mapping>
@@ -86,8 +84,6 @@
     <url-pattern>/class/*</url-pattern>
     <url-pattern>/course/*</url-pattern>
     <url-pattern>/user/*</url-pattern>
-    <url-pattern>/static/*</url-pattern>
-    <url-pattern>/files/*</url-pattern>
   </filter-mapping>
 
   <servlet>
@@ -104,28 +100,26 @@
     <url-pattern>/class/*</url-pattern>
     <url-pattern>/course/*</url-pattern>
     <url-pattern>/user/*</url-pattern>
-    <url-pattern>/static/*</url-pattern>
-    <url-pattern>/files/*</url-pattern>
   </servlet-mapping>
 
   <error-page>
     <error-code>401</error-code>
-    <location>/error/401.html</location>
+    <location>/static/401.html</location>
   </error-page>
 
   <error-page>
     <error-code>403</error-code>
-    <location>/error/403.html</location>
+    <location>/static/403.html</location>
   </error-page>
 
   <error-page>
     <error-code>404</error-code>
-    <location>/error/404.html</location>
+    <location>/static/404.html</location>
   </error-page>
 
   <error-page>
     <error-code>500</error-code>
-    <location>/error/500.html</location>
+    <location>/static/500.html</location>
   </error-page>
 
 </web-app>

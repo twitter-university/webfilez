@@ -88,5 +88,8 @@
       </tfoot>
     </table>
   </div>
+  <footer>
+    <a href="/static/terms.html">Terms of Use</a>
+  </footer>
 </body>
 </html>
