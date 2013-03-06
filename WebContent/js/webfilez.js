@@ -753,7 +753,6 @@ function handleClear() {
 }
 
 var doPop = false;
-
 $(document).ready(function() {
   $(document).on("click", ".file-select input[type='checkbox']", function() {
     setEnabledStatusOnActionButtons(this.checked || hasSelectedFileNames());
@@ -796,8 +795,12 @@ $(document).ready(function() {
 
   if (Modernizr.history) {
     $(document).on('click', 'table#listing tr.directory td.file-name a', function(event) {
-      event.stopPropagation();
       var uri = $(this).attr('href');
+      if ((new Date().getTime()) > authExpiry) {
+        log("Session has expired. Performing full load of " + uri);
+        return true;
+      }
+      event.stopPropagation();
       history.pushState(null, null, uri);
       log("Navigating to " + uri);
       doPop = true;
@@ -815,11 +818,6 @@ $(document).ready(function() {
       }
     });
   }
-
-  $(document).on("contextmenu", "table#listing tr.directory td.file-name", function(e) {
-    log('Context Menu event has fired!');
-    return false;
-  });
 
   log("Listing for the first time");
   list(window.location.pathname);

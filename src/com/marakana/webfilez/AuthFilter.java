@@ -179,6 +179,7 @@ public class AuthFilter implements Filter {
 					httpRequest.setAttribute(Constants.DESCRIPTION_ATTR_NAME,
 							auth.getDescription());
 					httpRequest.setAttribute(Constants.QUOTA, auth.getQuota());
+					httpRequest.setAttribute(Constants.EXPIRY, auth.getExpiry());
 					httpRequest.setAttribute(Constants.READ_ALLOWED,
 							auth.getAccess().contains(Access.READ));
 					httpRequest.setAttribute(Constants.WRITE_ALLOWED,

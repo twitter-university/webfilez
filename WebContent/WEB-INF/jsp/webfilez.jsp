@@ -8,7 +8,10 @@
 <link href="//ajax.googleapis.com/ajax/libs/jqueryui/1.9.2/themes/base/jquery-ui.css" rel="stylesheet" type="text/css"/>
 <link rel="stylesheet" href="/styles/style.css?v=<w:lastModified filePath='/styles/style.css'/>" type="text/css" />
 <script type="text/javascript">
-  var writeAllowed = ${writeAllowed? 'true' : 'false'};
+  /* <![CDATA[ */
+  var writeAllowed = ${writeAllowed? true : false};
+  var authExpiry = ${empty expiry? 0 : expiry};
+  /* ]]> */
 </script>
 <script type="text/javascript" src="//ajax.googleapis.com/ajax/libs/jquery/1.8.3/jquery.min.js"></script>
 <script type="text/javascript" src="//ajax.googleapis.com/ajax/libs/jqueryui/1.9.2/jquery-ui.min.js"></script>  
