@@ -2,7 +2,7 @@ package com.marakana.webfilez;
 
 import static com.marakana.webauthz.Access.READ;
 import static com.marakana.webauthz.Access.WRITE;
-import static com.marakana.webfilez.WebUtil.ALLOWED_METHODS_HEADER;
+import static com.marakana.webfilez.WebUtil.READ_WRITE_ALLOWED_METHODS_HEADER;
 import static com.marakana.webfilez.WebUtil.asParams;
 import static com.marakana.webfilez.WebUtil.isAjax;
 import static com.marakana.webfilez.WebUtil.isRead;
@@ -11,6 +11,7 @@ import static com.marakana.webfilez.WebUtil.isWrite;
 import java.io.IOException;
 import java.net.URLEncoder;
 import java.security.Key;
+import java.util.Map;
 
 import javax.naming.Context;
 import javax.naming.InitialContext;
@@ -127,7 +128,8 @@ public class AuthFilter implements Filter {
 							httpRequest.getRemoteAddr(),
 							httpRequest.getRequestURI()));
 				}
-				httpResponse.setHeader("Allow", ALLOWED_METHODS_HEADER);
+				httpResponse.setHeader("Allow",
+						READ_WRITE_ALLOWED_METHODS_HEADER);
 				httpResponse.setStatus(HttpServletResponse.SC_METHOD_NOT_ALLOWED);
 			} else if (!actualPath.startsWith(auth.getBasePath())
 					|| actualPath.contains("..")) {
@@ -148,7 +150,13 @@ public class AuthFilter implements Filter {
 				Cookie cookie = buildCookie(this.tokenName, authToken,
 						auth.getBasePath(), 1);
 				httpResponse.addCookie(cookie);
-				httpResponse.setStatus(HttpServletResponse.SC_FORBIDDEN);
+
+				if (isAjax(httpRequest)
+						|| !"GET".equals(httpRequest.getMethod())) {
+					httpResponse.setStatus(HttpServletResponse.SC_FORBIDDEN);
+				} else {
+					httpResponse.sendError(HttpServletResponse.SC_FORBIDDEN);
+				}
 			} else {
 				if (sendCookie) {
 					// TODO: check for cookie support, to prevent infinite
@@ -215,30 +223,43 @@ public class AuthFilter implements Filter {
 		}
 	}
 
+	private static final String URL_CHARSET = "UTF-8";
+
 	private void redirectToAuthUrl(HttpServletRequest request,
 			HttpServletResponse response, String reason) throws IOException {
 		StringBuffer requestUrlBuffer = request.getRequestURL();
-		String queryString = request.getQueryString();
-		if (queryString != null && !queryString.contains(this.tokenName)) {
-			requestUrlBuffer.append('?').append(queryString);
+		Map<String, String[]> params = request.getParameterMap();
+		if (!params.isEmpty()) {
+			requestUrlBuffer.append('?');
+			for (Map.Entry<String, String[]> e : params.entrySet()) {
+				String name = URLEncoder.encode(e.getKey(), URL_CHARSET);
+				if (!name.equals(this.tokenName)) {
+					for (String value : e.getValue()) {
+						requestUrlBuffer.append(name).append('=').append(
+								URLEncoder.encode(value, URL_CHARSET)).append(
+								'&');
+					}
+				}
+			}
 		}
 		String requestUrl = requestUrlBuffer.toString();
 		String authUrl = this.authUrl
 				+ URLEncoder.encode(requestUrlBuffer.toString(), "UTF-8");
 
-		if (isAjax(request)) {
+		if (isAjax(request) || !"GET".equals(request.getMethod())) {
 			if (logger.isDebugEnabled()) {
-				logger.debug("Refusing JavaScript request from ["
-						+ request.getRemoteAddr() + "] to [" + requestUrl
-						+ "]: " + reason + ". Redirecting to " + authUrl);
+				logger.debug("Refusing [" + request.getMethod()
+						+ "] request from [" + request.getRemoteAddr()
+						+ "] to [" + requestUrl + "]: " + reason);
 			}
 			response.setHeader("Location", authUrl);
 			response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
 		} else {
 			if (logger.isDebugEnabled()) {
-				logger.debug("Refusing request from ["
-						+ request.getRemoteAddr() + "] to [" + requestUrl
-						+ "]: " + reason + ". Redirecting to " + authUrl);
+				logger.debug("Refusing [" + request.getMethod()
+						+ "] request from [" + request.getRemoteAddr()
+						+ "] to [" + requestUrl + "]: " + reason
+						+ ". Redirecting to " + authUrl);
 			}
 			response.sendRedirect(authUrl);
 		}

@@ -28,23 +28,34 @@ import org.slf4j.LoggerFactory;
 
 public class WebUtil {
 	private static Logger logger = LoggerFactory.getLogger(WebUtil.class);
-	private static final Pattern CONTENT_DISPOSITION_FILE_NAME_EXTRACTOR_PATTERN = Pattern
-			.compile(".*filename=['\"]?([^'\"]+)['\" ].*");
+	private static final Pattern CONTENT_DISPOSITION_FILE_NAME_EXTRACTOR_PATTERN = Pattern.compile(".*filename=['\"]?([^'\"]+)['\" ].*");
 	private static final String[] READ_METHODS = { "GET", "HEAD", "OPTIONS" };
 	private static final String[] WRITE_METHODS = { "POST", "PUT", "DELETE", };
-	public static final String ALLOWED_METHODS_HEADER;
+
+	public static final String READ_ONLY_ALLOWED_METHODS_HEADER;
+	public static final String WRITE_ONLY_ALLOWED_METHODS_HEADER;
+	public static final String READ_WRITE_ALLOWED_METHODS_HEADER;
+
 	static {
 		StringBuilder sb = new StringBuilder();
 		for (String m : READ_METHODS) {
 			sb.append(m).append(",");
 		}
+		if (sb.length() > 0) {
+			sb.deleteCharAt(sb.length() - 1);
+		}
+		READ_ONLY_ALLOWED_METHODS_HEADER = sb.toString();
+
+		sb = new StringBuilder();
 		for (String m : WRITE_METHODS) {
 			sb.append(m).append(",");
 		}
 		if (sb.length() > 0) {
 			sb.deleteCharAt(sb.length() - 1);
 		}
-		ALLOWED_METHODS_HEADER = sb.toString();
+		WRITE_ONLY_ALLOWED_METHODS_HEADER = sb.toString();
+		READ_WRITE_ALLOWED_METHODS_HEADER = READ_ONLY_ALLOWED_METHODS_HEADER
+				+ "," + WRITE_ONLY_ALLOWED_METHODS_HEADER;
 	}
 
 	private WebUtil() {
@@ -103,8 +114,7 @@ public class WebUtil {
 	public static String getFileName(Part part) {
 		String contentDisposition = part.getHeader("Content-Disposition");
 		if (contentDisposition != null) {
-			Matcher matcher = CONTENT_DISPOSITION_FILE_NAME_EXTRACTOR_PATTERN
-					.matcher(contentDisposition);
+			Matcher matcher = CONTENT_DISPOSITION_FILE_NAME_EXTRACTOR_PATTERN.matcher(contentDisposition);
 			if (matcher.matches()) {
 				return matcher.group(1);
 			} else {
@@ -212,8 +222,7 @@ public class WebUtil {
 		} else if (ifMatch.equals("*")) {
 			return eTag != null;
 		} else {
-			for (StringTokenizer st = new StringTokenizer(ifMatch, ","); st
-					.hasMoreTokens();) {
+			for (StringTokenizer st = new StringTokenizer(ifMatch, ","); st.hasMoreTokens();) {
 				if (eTag.equals(st.nextToken().trim())) {
 					if (logger.isTraceEnabled()) {
 						logger.trace(req.getRequestURI() + " matches " + eTag);
@@ -240,8 +249,7 @@ public class WebUtil {
 		} else if (ifNoneMatch.equals("*")) {
 			return eTag == null;
 		} else {
-			for (StringTokenizer st = new StringTokenizer(ifNoneMatch, ","); st
-					.hasMoreTokens();) {
+			for (StringTokenizer st = new StringTokenizer(ifNoneMatch, ","); st.hasMoreTokens();) {
 				if (eTag.equals(st.nextToken().trim())) {
 					if (logger.isTraceEnabled()) {
 						logger.trace(req.getRequestURI() + " matches " + eTag);
@@ -299,10 +307,8 @@ public class WebUtil {
 	public static boolean isMultiPartRequest(HttpServletRequest request) {
 		String method = request.getMethod();
 		String contentType = request.getContentType();
-		return (method != null && (method.equals("POST") || method
-				.equals("PUT")))
-				&& contentType != null
-				&& contentType.startsWith("multipart/");
+		return (method != null && (method.equals("POST") || method.equals("PUT")))
+				&& contentType != null && contentType.startsWith("multipart/");
 	}
 
 	public static String getParentUriPath(String s) {
@@ -391,9 +397,8 @@ public class WebUtil {
 						end = length - 1;
 					} else {
 						start = parseLong(range.substring(0, dashPos));
-						end = (dashPos < range.length() - 1) ? parseLong(range
-								.substring(dashPos + 1, range.length()))
-								: length - 1;
+						end = (dashPos < range.length() - 1) ? parseLong(range.substring(
+								dashPos + 1, range.length())) : length - 1;
 					}
 					Range currentRange = new Range(start, end, length);
 					if (!currentRange.isValid()) {

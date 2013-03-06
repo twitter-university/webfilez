@@ -9,6 +9,9 @@ import static com.marakana.webfilez.FileUtil.unzip;
 import static com.marakana.webfilez.FileUtil.zipDirectory;
 import static com.marakana.webfilez.FileUtil.zipFile;
 import static com.marakana.webfilez.FileUtil.zipFiles;
+import static com.marakana.webfilez.WebUtil.READ_ONLY_ALLOWED_METHODS_HEADER;
+import static com.marakana.webfilez.WebUtil.READ_WRITE_ALLOWED_METHODS_HEADER;
+import static com.marakana.webfilez.WebUtil.WRITE_ONLY_ALLOWED_METHODS_HEADER;
 import static com.marakana.webfilez.WebUtil.asParams;
 import static com.marakana.webfilez.WebUtil.generateETag;
 import static com.marakana.webfilez.WebUtil.getFileName;
@@ -39,6 +42,7 @@ import java.net.SocketException;
 import java.net.URLDecoder;
 import java.nio.charset.Charset;
 import java.nio.file.DirectoryStream;
+import java.nio.file.FileAlreadyExistsException;
 import java.nio.file.FileSystems;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -128,6 +132,30 @@ public final class WebFilezServlet extends HttpServlet {
 			}
 		} catch (NamingException e) {
 			throw new ServletException("Failed to init", e);
+		}
+	}
+
+	@Override
+	protected void doOptions(HttpServletRequest request,
+			HttpServletResponse response) throws ServletException, IOException {
+		final String basePath = this.getBasePath(request, true);
+		String uri = request.getRequestURI();
+		Path file = this.getRequestFile(request);
+		boolean writeAllowed = this.getWriteAllowed(request);
+		if (fileExistsOrItIsTheBasePathAndIsCreated(file, uri, basePath,
+				writeAllowed)) {
+			boolean readAllowed = this.getReadAllowed(request);
+			String allow = readAllowed && writeAllowed ? READ_WRITE_ALLOWED_METHODS_HEADER
+					: readAllowed ? READ_ONLY_ALLOWED_METHODS_HEADER
+							: writeAllowed ? WRITE_ONLY_ALLOWED_METHODS_HEADER
+									: "OPTIONS";
+			response.setStatus(HttpServletResponse.SC_OK);
+			response.addHeader("Allow", allow);
+			response.setContentLength(0);
+		} else {
+			this.refuseRequest(request, response,
+					HttpServletResponse.SC_NOT_FOUND, "No such file [" + file
+							+ "] in response to [" + uri + "]");
 		}
 	}
 
@@ -780,9 +808,25 @@ public final class WebFilezServlet extends HttpServlet {
 			}
 		}
 		if (in == null || contentLength == 0) {
-			Files.createFile(target);
-			if (logger.isDebugEnabled()) {
-				logger.debug("Created new file [" + target + "]");
+			if (Files.exists(target)) {
+				if (logger.isDebugEnabled()) {
+					logger.debug("Overwriting [" + target
+							+ "] with an empty file");
+				}
+				Files.delete(target);
+			}
+			try {
+				Files.createFile(target);
+				if (logger.isDebugEnabled()) {
+					logger.debug("Created new file [" + target + "]");
+				}
+			} catch (FileAlreadyExistsException e) {
+				if (logger.isDebugEnabled()) {
+					logger.debug("Overwriting [" + target
+							+ "] with an empty file (take 2)");
+				}
+				Files.delete(target);
+				Files.createFile(target);
 			}
 		} else {
 			this.handleSingleUpload(in, contentLength, target, request,
@@ -1275,8 +1319,14 @@ public final class WebFilezServlet extends HttpServlet {
 		return basePath;
 	}
 
-	private Boolean getWriteAllowed(HttpServletRequest request) {
-		return (Boolean) request.getAttribute(Constants.WRITE_ALLOWED);
+	private boolean getWriteAllowed(HttpServletRequest request) {
+		Boolean v = (Boolean) request.getAttribute(Constants.WRITE_ALLOWED);
+		return v != null && v.booleanValue();
+	}
+
+	private boolean getReadAllowed(HttpServletRequest request) {
+		Boolean v = (Boolean) request.getAttribute(Constants.READ_ALLOWED);
+		return v != null && v.booleanValue();
 	}
 
 	private boolean fileExistsOrItIsTheBasePathAndIsCreated(Path file,
