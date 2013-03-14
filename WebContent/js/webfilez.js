@@ -277,7 +277,7 @@ function list(url) {
       readme.empty();
     }
     tablesort = table.tablesort();
-    tablesort.sort(table.find$("thead th:FIRST"), "asc");
+    tablesort.sort(table.find("thead th:FIRST"), "asc");
   }).fail(handleError);
 }
 
