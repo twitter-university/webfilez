@@ -276,8 +276,8 @@ function list(url) {
     } else {
       readme.empty();
     }
-    tablesort = table.tablesort();
-    tablesort.sort(table.find("thead th:FIRST"), "asc");
+    table.tablesort();
+    table.data("tablesort").sort(table.find("thead th:FIRST"), "asc");
   }).fail(handleError);
 }
 
