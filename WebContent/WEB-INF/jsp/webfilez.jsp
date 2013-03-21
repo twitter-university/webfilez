@@ -9,8 +9,8 @@
 <link rel="stylesheet" href="/styles/style.css?v=<w:lastModified filePath='/styles/style.css'/>" type="text/css" />
 <script type="text/javascript">
   /* <![CDATA[ */
-  var writeAllowed = ${writeAllowed? true : false};
-  var authExpiry = ${empty expiry? 0 : expiry};
+  var writeAllowed = eval('${writeAllowed? true : false}');
+  var authExpiry = eval('${empty expiry? 0 : expiry}');
   /* ]]> */
 </script>
 <script type="text/javascript" src="//ajax.googleapis.com/ajax/libs/jquery/1.8.3/jquery.min.js"></script>
