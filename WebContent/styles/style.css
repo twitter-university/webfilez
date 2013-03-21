@@ -275,3 +275,7 @@ table tbody tr:HOVER .inline-button {
 	padding-right: 20px;
 	background: url('/images/ajax-loader.gif') no-repeat right;
 }
+
+.number {
+	text-align: right;
+}
