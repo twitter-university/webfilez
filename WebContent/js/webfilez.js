@@ -66,7 +66,16 @@ function setupRename() {
   newNameInput.focus();
 }
 
-function setupNewResource(file) {
+function setupNewResource(name, type) {
+  var file = {
+      name: name,
+      type: type,
+      _links: {
+        self: {
+          href: toUri(name)
+        }
+      }
+  };
   var tr = fileToRow(file);
   var td = tr.find('td.file-name');
   td.find('button').remove();
@@ -202,7 +211,7 @@ function fileToRow(file) {
   var td = $('<td>').addClass('file-select').append(
       $('<input>').attr('type', 'checkbox').attr('name', 'file').attr('value', file.name));
   tr.append(td);
-  td = $('<td>').attr('data-sort-value', file.name).addClass('file-name').append($('<a>').attr('href', toUri(name)).html(name));
+  td = $('<td>').attr('data-sort-value', file.name).addClass('file-name').append($('<a>').attr('href', file._links.self.href).html(name));
   if (writeAllowed) {
     td.append($('<button>').addClass('inline-button').addClass('delete-button').addClass(
         'write-operation').attr('type', 'button').click(deleteFile).html('Delete'));
@@ -231,6 +240,7 @@ function fileToRow(file) {
 }
 
 function toUri(filename) {
+  //TODO: the URI should come from the model
   return window.location.pathname + encodeURI(filename);
 }
 
@@ -253,11 +263,11 @@ function list(url) {
     }
     var tbody = table.find("tbody");
     tbody.empty();
-    if (response.parent) {
+    if (response._links.up) {
       var tr = $('<tr>').addClass('directory');
       tr.append($('<td>').addClass('file-select').html(''));
       tr.append($('<td>').addClass('file-name').append(
-          $('<a>').attr('href', response.parent).html('..')));
+          $('<a>').attr('href', response._links.up.href).html('..')));
       tr.append($('<td>').addClass('file-size').html(''));
       tr.append($('<td>').addClass('file-last-modified-date').html(''));
       tbody.append(tr);
@@ -271,8 +281,13 @@ function list(url) {
       tbody.append(fileToRow(response.files[i]));
     }
     var readme = $("#readme");
-    if (response.readme) {
-      readme.html(response.readme);
+    if (response._links.describedby) {
+      $.ajax({
+        url : response._links.describedby.href,
+        type : "GET",
+      }).done(function(data, textStatus, jqXHR) {
+        $("#readme").html(data);
+      }).fail(handleError);
     } else {
       readme.empty();
     }
@@ -726,17 +741,11 @@ function handleRefresh() {
 
 function handleNewDir() {
   log("Setting up for new directory");
-  setupNewResource({
-    type : 'x-directory/normal',
-    name : 'New Folder',
-  });
+  setupNewResource('New Folder', 'x-directory/normal');
 }
 
 function handleNewFile() {
-  setupNewResource({
-    type : 'text/plain',
-    name : 'New File.txt',
-  });
+  setupNewResource('New File.txt', 'text/plain');
 }
 
 function handleCopy() {

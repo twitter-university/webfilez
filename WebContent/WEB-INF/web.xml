@@ -45,18 +45,6 @@
   </env-entry>
 
   <env-entry>
-    <env-entry-name>readme-file-max-length</env-entry-name>
-    <env-entry-type>java.lang.Integer</env-entry-type>
-    <env-entry-value>5242880</env-entry-value>
-  </env-entry>
-
-  <env-entry>
-    <env-entry-name>readme-file-charset</env-entry-name>
-    <env-entry-type>java.lang.String</env-entry-type>
-    <env-entry-value>UTF-8</env-entry-value>
-  </env-entry>
-
-  <env-entry>
     <env-entry-name>base-path-pattern</env-entry-name>
     <env-entry-type>java.lang.String</env-entry-type>
     <env-entry-value>^(/[^/]+/[0-9]+/files/).*</env-entry-value>
