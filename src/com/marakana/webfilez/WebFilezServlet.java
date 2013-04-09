@@ -491,10 +491,8 @@ public final class WebFilezServlet extends HttpServlet {
 				}
 			}
 			if (readmeFile != null) {
-				writeLink(
-						"describedby",
-						this.toUri(baseUri, readmeFile.getFileName().toString()),
-						jsonWriter);
+				writeLink("describedby", this.toUri(baseUri,
+						readmeFile.getFileName().toString(), false), jsonWriter);
 			} else {
 				if (logger.isTraceEnabled()) {
 					logger.trace("No README file present for uri [" + uri
@@ -941,8 +939,12 @@ public final class WebFilezServlet extends HttpServlet {
 			logger.debug("Handling request to rename file [" + file + "]");
 		}
 		final String newName = request.getParameter("newName");
-		final Path newFile = file.resolveSibling(newName);
-		if (Files.exists(newFile)) {
+		// TODO: check valid!
+		final Path newFile = this.resolveSafe(file.getParent(), newName);
+		if (newFile == null) {
+			refuseBadRequest(request, response, "Cannot rename [" + file
+					+ "] to newFile=[" + newFile + "]; illegal filename.");
+		} else if (Files.exists(newFile)) {
 			refuseBadRequest(request, response, "Cannot rename [" + file
 					+ "] because newFile=[" + newFile + "] already exists");
 		} else {
@@ -1168,9 +1170,16 @@ public final class WebFilezServlet extends HttpServlet {
 		return mimeType;
 	}
 
-	private String toUri(String baseUri, String name)
+	private String toUri(String baseUri, String name, boolean isDirectory)
 			throws UnsupportedEncodingException {
-		return baseUri + URLEncoder.encode(name, "UTF-8");
+		StringBuilder out = new StringBuilder(baseUri.length() + name.length()
+				+ 16);
+		out.append(baseUri);
+		out.append(URLEncoder.encode(name, "UTF-8"));
+		if (isDirectory) {
+			out.append('/');
+		}
+		return out.toString();
 	}
 
 	private long writeFileInfoToJson(String baseUri, Collection<Path> paths,
@@ -1203,7 +1212,7 @@ public final class WebFilezServlet extends HttpServlet {
 		jsonWriter.object();
 		String name = path.getName(path.getNameCount() - 1).toString();
 		jsonWriter.key("_links").object();
-		writeSelfLink(toUri(baseUri, name), jsonWriter);
+		writeSelfLink(toUri(baseUri, name, Files.isDirectory(path)), jsonWriter);
 		jsonWriter.endObject();
 		jsonWriter.key("name").value(name);
 		jsonWriter.key("type").value(getMimeType(path));
