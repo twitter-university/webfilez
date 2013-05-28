@@ -456,7 +456,9 @@ function clearFilenameSelection() {
 }
 
 function log(s) {
-  if (console && console.log) {
+  if (typeof console === "undefined" || typeof console.log === "undefined") {
+    // alert(s);
+  } else {
     console.log(s);
   }
 }
@@ -663,6 +665,10 @@ function setupDragAndDrop(container, dropFunction) {
 }
 
 function selectFilesFor(action) {
+  if (typeof window.localStorage === "undefined") {
+    log("Cannot select files for "+ action +". This browser does not support local storage");
+    return;
+  }
   log("Selecting files for " + action);
   var filenames = getSelectedFileNames();
   if (filenames.length > 0) {
@@ -673,7 +679,7 @@ function selectFilesFor(action) {
     for ( var i = 0; i < filenames.length; i++) {
       paths.push(toUri(filenames[i]));
     }
-    localStorage.setItem("source", JSON.stringify({
+    window.localStorage.setItem("source", JSON.stringify({
       action : action,
       paths : paths
     }));
@@ -689,11 +695,20 @@ function selectFilesFor(action) {
 }
 
 function clearSelectedFiles() {
-  localStorage.removeItem("source");
+  if (typeof window.localStorage === "undefined") {
+    log("Cannot clear selected files. This browser does not support local storage");
+    return;
+  }
+  window.localStorage.removeItem("source");
 }
 
 function hasSelectedFiles() {
-  return localStorage.hasOwnProperty("source");
+  if (typeof window.localStorage === "undefined") {
+    log("Cannot check if there are selected files. This browser does not support local storage");
+    return false;
+  } else {
+    return window.localStorage.getItem("source") != null;
+  }
 }
 
 function startsWith(s1, s2) {
@@ -701,7 +716,11 @@ function startsWith(s1, s2) {
 }
 
 function handlePaste() {
-  var source = localStorage.getItem("source");
+  if (typeof window.localStorage === "undefined") {
+    log("Cannot paste. This browser does not support local storage");
+    return;
+  } 
+  var source = window.localStorage.getItem("source");
   if (source) {
     source = JSON.parse(source);
     setEnabledStatusOnPasteButton(false);
