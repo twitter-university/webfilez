@@ -1,0 +1,282 @@
+body {
+	font-family: Arial, Tahoma, sans-serif;
+	color: black;
+	background-color: white;
+	font-size: 16px;
+}
+
+footer {
+	font-size: 0.7em;
+	color: #ccc;
+	text-align: center;
+}
+
+h1 {
+	color: black;
+	font-size: 1.5em;
+	height: 50px;
+	margin: 0 auto;
+	background: url('/images/logo.png') no-repeat top right;
+	background-size: 50px 50px;
+}
+
+a {
+	color: black;
+}
+
+hr {
+	color: #0086b2;
+}
+
+dt {
+	font-size: 1.1em;
+	font-weight: bold;
+}
+
+dd {
+	padding: margin-top:                  0.3em;
+	margin-bottom: 1em;
+}
+
+ol ol {
+	list-style-type: lower-alpha;
+}
+
+table#listing {
+	width: 100%;
+	border: 1px solid gray;
+	border-radius: 0.25em;
+}
+
+table#listing.dragover {
+	border-color: #f90;
+}
+
+table.dragover tfoot tr td {
+	color: #f90;
+}
+
+tr {
+	height: 1.4em;
+}
+
+tr .file-select {
+	width: 1.5em;
+	text-align: center;
+}
+
+tr td.file-name a {
+	padding-left: 20px;
+}
+
+tr.directory td.file-name a {
+	background: url('/images/icons/folder.gif') no-repeat left;
+}
+
+tr.directory td.file-name a:hover {
+	background-image: url('/images/icons/folder_open.gif');
+}
+
+tr.file td.file-name a {
+	background: url('/images/icons/file.gif') no-repeat left;
+}
+
+tr.file td.file-name a:hover {
+	background-image: url('/images/icons/file_download.gif');
+}
+
+#listing th {
+	cursor: pointer;
+}
+
+th.sorted.ascending:AFTER {
+	content: " \2191";
+}
+
+th.sorted.descending:AFTER {
+	content: " \2193";
+}
+
+td.file-name .progress-bar {
+	float: right;
+	margin-left: 2em;
+	display: inline-block;
+	vertical-align: baseline;
+}
+
+thead tr th, thead tr td {
+	background-color: #000;
+	color: #fff;
+}
+
+tbody tr:nth-child(odd) {
+	background-color: #eee;
+}
+
+tfoot tr td {
+	color: #999;
+}
+
+td {
+	height: 1.4em;
+	padding: 0.2em;
+}
+
+img.icon {
+	width: 16px;
+	height: 16px;
+	margin-left: 5px;
+	vertical-align: text-bottom;
+}
+
+img.ajax-loader {
+	width: 16px;
+	height: 16px;
+	margin-left: 5px;
+}
+
+h1 img.icon {
+	vertical-align: baseline;
+}
+
+.file-name,.file-name-header {
+	text-align: left;
+	height: 1.2em;
+}
+
+.file-size,.file-size-header {
+	text-align: right;
+	white-space: nowrap;
+	width: 1em;
+}
+
+.file-last-modified-date,.file-last-modified-date-header {
+	text-align: right;
+	white-space: nowrap;
+	width: 1em;
+}
+
+.note {
+	color: #666;
+}
+
+.notice {
+	color: #f90;
+}
+
+.inline-button {
+	margin-left: 0.5em;
+	padding: 0;
+	color: #666;
+	border: none;
+	background: none;
+	text-transform: lowercase;
+	display: none;
+}
+
+html.touchDevice .inline-button {
+	display: inline;
+}
+
+.inline-button:BEFORE {
+	content: '[';
+}
+
+.inline-button:AFTER {
+	content: ']';
+}
+
+table tbody tr:HOVER .inline-button {
+	display: inline;
+}
+
+#status {
+	margin: 0.2em;
+	width: 100%;
+}
+
+#info {
+	float: right;
+	margin-left: 1em;
+}
+
+#info .quota {
+	color: #ccc;
+}
+
+#readme {
+	margin-top: 1em;
+}
+
+#edit {
+	padding-left: 0.2em;
+	padding-right: 0.2em;
+}
+
+#edit textarea {
+	width: 99%;
+	height: 100%;
+}
+
+#description {
+	font-size: 0.85em;
+	margin-top: -1.5em;
+	color: #666;
+}
+
+#upload-dialog table {
+	width: 100%;
+	border: 1px solid gray;
+	border-radius: 0.25em;
+	font-size: 0.9em;
+}
+
+#upload-dialog table .inline-button {
+	font-size: 0.7em;
+}
+
+#upload-dialog table tbody tr td.file-name {
+	padding-left: 20px;
+	background: url('/images/icons/file.gif') no-repeat left;
+}
+
+#upload-dialog table tbody tr td.file-name .status {
+	float: right;
+	margin-left: 0.5em;
+	display: inline-block;
+	vertical-align: baseline;
+	background: url('/images/icons/bullet_white.png') no-repeat;
+	width: 16px;
+	height: 16px;
+	padding: 0;
+}
+
+#upload-dialog table tbody tr td.file-name .pending {
+	background-image: url('/images/icons/bullet_yellow.png');
+}
+
+#upload-dialog table tbody tr td.file-name .failed {
+	background-image: url('/images/icons/bullet_red.png');
+}
+
+#upload-dialog table tbody tr td.file-name .aborted {
+	background-image: url('/images/icons/bullet_orange.png');
+}
+
+#upload-dialog table tbody tr td.file-name .success {
+	background-image: url('/images/icons/bullet_green.png');
+}
+
+.ui-dialog .ui-dialog-content {
+	padding-left: 0.2em;
+	padding-right: 0.2em;
+}
+
+.ongoing {
+	padding-right: 20px;
+	background: url('/images/ajax-loader.gif') no-repeat right;
+}
+
+.number {
+	text-align: right;
+}
