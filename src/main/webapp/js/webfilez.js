@@ -1,3 +1,21 @@
+function toSelfUri(params) {
+  var url = window.location.href;
+  if (params) {
+    url += (url.split('?')[1] ? '&':'?') + params;         
+  }
+  return url;
+}
+
+function toUri(filename) {
+  //TODO: the URI should come from the model
+  var url = window.location.pathname + encodeURI(filename);
+  var qs = window.location.href.split('?')[1];
+  if (qs) {
+    url += '?' + qs;
+  }
+  return url;
+}
+
 function toDateAndTime(input) {
   var date = input instanceof Date ? input : new Date(input);
   return date.toLocaleDateString() + " " + date.toLocaleTimeString();
@@ -132,8 +150,8 @@ function unzip() {
 
 function downloadAsZip() {
   var filename = getFilenameFromRow($(this).closest('tr'));
-  window.location.href = window.location.pathname + '?_action=zip_download&file='
-      + encodeURI(filename);
+  window.location.href = toSelfUri('_action=zip_download&file='
+      + encodeURI(filename));
 }
 
 function saveFile(filename, eTag, lastModified, data, tr, onSaveFn) {
@@ -237,11 +255,6 @@ function fileToRow(file) {
   td = $('<td>').attr('data-sort-value', file.lastModified).addClass('file-last-modified-date').html(toDateAndTime(file.lastModified));
   tr.append(td);
   return tr;
-}
-
-function toUri(filename) {
-  //TODO: the URI should come from the model
-  return window.location.pathname + encodeURI(filename);
 }
 
 function list(url) {
@@ -396,7 +409,7 @@ function deleteFile() {
 function handleZip() {
   setStatus("Creating a ZIP archive ...", true);
   $.ajax({
-    url : window.location.pathname,
+    url : toSelfUri(),
     type : "POST",
     data : "_action=zip&" + $("#form").serialize(),
     dataType : 'json'
@@ -413,8 +426,8 @@ function handleZip() {
 }
 
 function handleDownloadZip() {
-  var url = window.location.pathname + '?_action=zip_download&'
-      + $("#form input[type='checkbox'][name='file']").serialize();
+  var url = toSelfUri('_action=zip_download&'
+      + $("#form input[type='checkbox'][name='file']").serialize());
   setEnabledStatusOnActionButtons(false);
   clearFilenameSelection();
   window.location.href = url;
@@ -735,7 +748,7 @@ function handleSinglePaste(action, paths) {
     log("Executing " + action + " on " + path);
     setStatus((action === 'copy' ? "Copying" : "Moving") + " '" + path + "' ...", true);
     $.ajax({
-      url : window.location.pathname,
+      url : toSelfUri(),
       type : "POST",
       data : "_action=" + action + "&source=" + path,
       dataType : 'json'
@@ -755,7 +768,7 @@ function handleSinglePaste(action, paths) {
 
 function handleRefresh() {
   log("Refreshing");
-  list(window.location.pathname);
+  list(toSelfUri());
 }
 
 function handleNewDir() {
@@ -840,7 +853,7 @@ $(document).ready(function() {
     window.addEventListener("popstate", function(event) {
       if (doPop) {
         log("Navigating back");
-        list(window.location.pathname);
+        list(toSelfUri());
         event.stopPropagation();
       } else {
         log("Ignoring invalid pop");
@@ -849,5 +862,5 @@ $(document).ready(function() {
   }
 
   log("Listing for the first time");
-  list(window.location.pathname);
+  list(toSelfUri());
 });

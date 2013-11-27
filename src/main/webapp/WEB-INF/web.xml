@@ -8,6 +8,10 @@
     <welcome-file>webfilez-welcome-file.html</welcome-file>
   </welcome-file-list>
 
+  <listener>
+    <listener-class>com.twitter.university.webfilez.WebFilezServletContextListener</listener-class>
+  </listener>
+
   <env-entry>
     <env-entry-name>auth-token-name</env-entry-name>
     <env-entry-type>java.lang.String</env-entry-type>

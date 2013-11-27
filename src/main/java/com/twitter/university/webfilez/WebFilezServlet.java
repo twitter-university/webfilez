@@ -1,5 +1,6 @@
 package com.twitter.university.webfilez;
 
+import static com.twitter.university.webfilez.Constants.AUTH_TOKEN_ATTR_NAME;
 import static com.twitter.university.webfilez.FileUtil.copy;
 import static com.twitter.university.webfilez.FileUtil.delete;
 import static com.twitter.university.webfilez.FileUtil.getUniqueFileInDirectory;
@@ -9,10 +10,10 @@ import static com.twitter.university.webfilez.FileUtil.unzip;
 import static com.twitter.university.webfilez.FileUtil.zipDirectory;
 import static com.twitter.university.webfilez.FileUtil.zipFile;
 import static com.twitter.university.webfilez.FileUtil.zipFiles;
+import static com.twitter.university.webfilez.WebUtil.JSON_CONTENT_TYPE;
 import static com.twitter.university.webfilez.WebUtil.READ_ONLY_ALLOWED_METHODS_HEADER;
 import static com.twitter.university.webfilez.WebUtil.READ_WRITE_ALLOWED_METHODS_HEADER;
 import static com.twitter.university.webfilez.WebUtil.WRITE_ONLY_ALLOWED_METHODS_HEADER;
-import static com.twitter.university.webfilez.WebUtil.asParams;
 import static com.twitter.university.webfilez.WebUtil.generateETag;
 import static com.twitter.university.webfilez.WebUtil.getFileName;
 import static com.twitter.university.webfilez.WebUtil.getParentUriPath;
@@ -29,6 +30,18 @@ import static com.twitter.university.webfilez.WebUtil.setContentLength;
 import static com.twitter.university.webfilez.WebUtil.setNoCacheHeaders;
 import static java.lang.Math.max;
 import static java.lang.Math.min;
+import static javax.servlet.http.HttpServletResponse.SC_BAD_REQUEST;
+import static javax.servlet.http.HttpServletResponse.SC_CONFLICT;
+import static javax.servlet.http.HttpServletResponse.SC_CREATED;
+import static javax.servlet.http.HttpServletResponse.SC_FORBIDDEN;
+import static javax.servlet.http.HttpServletResponse.SC_INTERNAL_SERVER_ERROR;
+import static javax.servlet.http.HttpServletResponse.SC_NOT_FOUND;
+import static javax.servlet.http.HttpServletResponse.SC_NOT_MODIFIED;
+import static javax.servlet.http.HttpServletResponse.SC_NO_CONTENT;
+import static javax.servlet.http.HttpServletResponse.SC_OK;
+import static javax.servlet.http.HttpServletResponse.SC_PARTIAL_CONTENT;
+import static javax.servlet.http.HttpServletResponse.SC_PRECONDITION_FAILED;
+import static javax.servlet.http.HttpServletResponse.SC_REQUEST_ENTITY_TOO_LARGE;
 
 import java.io.ByteArrayOutputStream;
 import java.io.FileNotFoundException;
@@ -56,9 +69,6 @@ import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-import javax.naming.Context;
-import javax.naming.InitialContext;
-import javax.naming.NamingException;
 import javax.servlet.ServletConfig;
 import javax.servlet.ServletException;
 import javax.servlet.ServletOutputStream;
@@ -87,55 +97,12 @@ public final class WebFilezServlet extends HttpServlet {
 
     private Charset DEFAULT_CHARSET = Charset.forName("UTF-8");
 
-    private int bufferSize;
-
-    private String defaultMimeType;
-
-    private String directoryMimeType;
-
-    private Path readmeFileName;
-
-    private String rootDir;
-
-    private Collection<SearchAndReplace> rewriteRules;
-
-    private Pattern basePathPattern;
-
-    private boolean alwaysAllowCreationOfBasePathOnRead = false;
+    private Config config;
 
     @Override
     public void init(ServletConfig config) throws ServletException {
         super.init(config);
-        try {
-            final Context ctx = new InitialContext();
-            try {
-                final Params params = asParams((Context) ctx
-                        .lookup("java:comp/env/"));
-                this.bufferSize = params.getInteger("buffer-size", 4096);
-                this.directoryMimeType = params.getString(
-                        "directory-mime-type", "x-directory/normal");
-                this.defaultMimeType = params.getString("default-mime-type",
-                        "application/octet-stream");
-                this.readmeFileName = FileSystems.getDefault().getPath(
-                        params.getString("readme-file-name", "README.html"));
-                final String rootDir = params.getString("root-dir");
-                this.rootDir = rootDir == null ? "." : rootDir;
-                this.rewriteRules = SearchAndReplace.parse(params
-                        .getString("rewrite-rules"));
-                this.basePathPattern = Pattern.compile(params.getString(
-                        "base-path-pattern", "^(/[^/]+/[0-9]+/files/).*"));
-                this.alwaysAllowCreationOfBasePathOnRead = params.getBoolean(
-                        "always-allow-creation-of-base-path-on-read",
-                        Boolean.FALSE);
-                if (logger.isInfoEnabled()) {
-                    logger.info("Initialized " + this);
-                }
-            } finally {
-                ctx.close();
-            }
-        } catch (NamingException e) {
-            throw new ServletException("Failed to init", e);
-        }
+        this.config = Config.getConfig(getServletContext());
     }
 
     @Override
@@ -152,13 +119,12 @@ public final class WebFilezServlet extends HttpServlet {
                     : readAllowed ? READ_ONLY_ALLOWED_METHODS_HEADER
                             : writeAllowed ? WRITE_ONLY_ALLOWED_METHODS_HEADER
                                     : "OPTIONS";
-            response.setStatus(HttpServletResponse.SC_OK);
+            response.setStatus(SC_OK);
             response.addHeader("Allow", allow);
             response.setContentLength(0);
         } else {
-            this.refuseRequest(request, response,
-                    HttpServletResponse.SC_NOT_FOUND, "No such file [" + file
-                            + "] in response to [" + uri + "]");
+            this.refuseRequest(request, response, SC_NOT_FOUND,
+                    "No such file [" + file + "] in response to [" + uri + "]");
         }
     }
 
@@ -212,7 +178,7 @@ public final class WebFilezServlet extends HttpServlet {
                     uri = getParentUriPath(uri);
                     file = file.getParent();
                     if (uri == null || !uri.startsWith(basePath)
-                            || file.toString().equals(this.rootDir)) {
+                            || file.toString().equals(config.getRootDir())) {
                         break; // give up
                     } else {
                         if (logger.isTraceEnabled()) {
@@ -230,9 +196,8 @@ public final class WebFilezServlet extends HttpServlet {
                     }
                 }
             }
-            this.refuseRequest(request, response,
-                    HttpServletResponse.SC_NOT_FOUND, "No such file [" + file
-                            + "] in response to [" + uri + "]");
+            this.refuseRequest(request, response, SC_NOT_FOUND,
+                    "No such file [" + file + "] in response to [" + uri + "]");
         }
     }
 
@@ -254,20 +219,18 @@ public final class WebFilezServlet extends HttpServlet {
                     if (logger.isDebugEnabled()) {
                         logger.debug("Deleted [" + file + "]");
                     }
-                    response.setStatus(HttpServletResponse.SC_NO_CONTENT);
+                    response.setStatus(SC_NO_CONTENT);
                 } catch (IOException e) {
                     this.sendServerFailure(request, response,
                             "Failed to delete [" + file + "]", e);
                 }
             } else {
-                this.refuseRequest(request, response,
-                        HttpServletResponse.SC_PRECONDITION_FAILED,
+                this.refuseRequest(request, response, SC_PRECONDITION_FAILED,
                         "Refusing to delete file for which precondition failed: ["
                                 + file + "]");
             }
         } else {
-            this.refuseRequest(request, response,
-                    HttpServletResponse.SC_NOT_FOUND,
+            this.refuseRequest(request, response, SC_NOT_FOUND,
                     "Cannot delete a file that does not exist [" + file + "]");
         }
     }
@@ -277,7 +240,8 @@ public final class WebFilezServlet extends HttpServlet {
             HttpServletResponse response) throws ServletException, IOException {
         final Path file = this.getRequestFile(request);
         final String type = request.getContentType();
-        final boolean makeDirRequest = this.directoryMimeType.equals(type);
+        final boolean makeDirRequest = config.getDirectoryMimeType().equals(
+                type);
         final int responseCode;
         if (Files.exists(file)) {
             if (makeDirRequest) {
@@ -287,16 +251,14 @@ public final class WebFilezServlet extends HttpServlet {
                                 + "]. Ignoring.");
                     }
                 } else {
-                    this.refuseRequest(request, response,
-                            HttpServletResponse.SC_CONFLICT,
+                    this.refuseRequest(request, response, SC_CONFLICT,
                             "Cannot create directory since a file with the same name already exists ["
                                     + file + "]");
                     return;
                 }
             } else {
                 if (Files.isDirectory(file)) {
-                    this.refuseRequest(request, response,
-                            HttpServletResponse.SC_CONFLICT,
+                    this.refuseRequest(request, response, SC_CONFLICT,
                             "Cannot create file since a directory with the same name already exists ["
                                     + file + "]");
                     return;
@@ -312,14 +274,14 @@ public final class WebFilezServlet extends HttpServlet {
                         }
                     } else {
                         this.refuseRequest(request, response,
-                                HttpServletResponse.SC_PRECONDITION_FAILED,
+                                SC_PRECONDITION_FAILED,
                                 "Cannot modify file for which precondition failed: ["
                                         + file + "]");
                         return;
                     }
                 }
             }
-            responseCode = HttpServletResponse.SC_OK;
+            responseCode = SC_OK;
         } else {
             if (makeDirRequest) {
                 Files.createDirectories(file);
@@ -331,13 +293,11 @@ public final class WebFilezServlet extends HttpServlet {
                     return;
                 }
             }
-            responseCode = HttpServletResponse.SC_CREATED;
+            responseCode = SC_CREATED;
         }
         response.setStatus(responseCode);
         try {
-            this.sendFileInfoResponse(
-                    getParentUriPath(this.getAbsoluteUri(request)), file,
-                    response);
+            this.sendFileInfoResponse(request, response, file, true);
         } catch (JSONException e) {
             if (logger.isErrorEnabled()) {
                 logger.error(
@@ -413,8 +373,7 @@ public final class WebFilezServlet extends HttpServlet {
                                             + request.getRequestURI());
                         }
                     } else {
-                        this.refuseRequest(request, response,
-                                HttpServletResponse.SC_FORBIDDEN,
+                        this.refuseRequest(request, response, SC_FORBIDDEN,
                                 "Don't know how to handle POST to file " + file);
                     }
                 } catch (Exception e) {
@@ -423,8 +382,7 @@ public final class WebFilezServlet extends HttpServlet {
                                     + " for [" + action + "]", e);
                 }
             } else {
-                this.refuseRequest(request, response,
-                        HttpServletResponse.SC_NOT_FOUND,
+                this.refuseRequest(request, response, SC_NOT_FOUND,
                         "Cannot handle a POST request for file that does not exist: "
                                 + file);
             }
@@ -472,8 +430,9 @@ public final class WebFilezServlet extends HttpServlet {
             if (logger.isTraceEnabled()) {
                 logger.trace("Listing files in [" + dir + "]");
             }
-            response.setContentType("application/json");
+            response.setContentType(JSON_CONTENT_TYPE);
             response.setHeader("Accept-Ranges", "none");
+            final String authToken = getAuthToken(request);
             final ByteArrayOutputStream out = new ByteArrayOutputStream(8196);
             long totalSize = 0;
             Path readmeFile = null;
@@ -485,8 +444,9 @@ public final class WebFilezServlet extends HttpServlet {
             String baseUri = this.getAbsoluteUri(request);
             try (DirectoryStream<Path> files = Files.newDirectoryStream(dir)) {
                 for (Path file : files) {
-                    totalSize += writeFileInfoToJson(baseUri, file, jsonWriter);
-                    if (file.getFileName().equals(this.readmeFileName)) {
+                    totalSize += writeFileInfoToJson(baseUri, file, jsonWriter,
+                            authToken);
+                    if (file.getFileName().equals(config.getReadmeFileName())) {
                         readmeFile = file;
                     }
                 }
@@ -496,7 +456,13 @@ public final class WebFilezServlet extends HttpServlet {
             jsonWriter.key("_links").object();
             writeSelfLink(baseUri, jsonWriter);
             if (uri.length() > basePath.length() && uri.startsWith(basePath)) {
-                writeLink("up", getParentUriPath(baseUri), jsonWriter);
+                String upUri = getParentUriPath(baseUri);
+                if (config.isAppendAuthToUrls() && authToken != null
+                        && !authToken.isEmpty()) {
+                    // assuming URL-encoded
+                    upUri += "?" + config.getTokenName() + "=" + authToken;
+                }
+                writeLink("up", upUri, jsonWriter);
             } else {
                 if (logger.isTraceEnabled()) {
                     logger.trace("No parent present for uri [" + uri
@@ -505,7 +471,8 @@ public final class WebFilezServlet extends HttpServlet {
             }
             if (readmeFile != null) {
                 writeLink("describedby", this.toUri(baseUri, readmeFile
-                        .getFileName().toString(), false), jsonWriter);
+                        .getFileName().toString(), false, authToken),
+                        jsonWriter);
             } else {
                 if (logger.isTraceEnabled()) {
                     logger.trace("No README file present for uri [" + uri
@@ -515,7 +482,7 @@ public final class WebFilezServlet extends HttpServlet {
             jsonWriter.endObject();
             jsonWriter.key("name").value(dir.getFileName());
             jsonWriter.key("uri").value(uri);
-            jsonWriter.key("type").value(this.directoryMimeType);
+            jsonWriter.key("type").value(config.getDirectoryMimeType());
             jsonWriter.key("size").value(totalSize);
             jsonWriter.key("quota").value(this.getQuota(request));
             jsonWriter.key("lastModified")
@@ -568,7 +535,7 @@ public final class WebFilezServlet extends HttpServlet {
                 }
             }
             long bytesToRead = range == null ? length : range.getBytesToRead();
-            final byte[] buffer = new byte[this.bufferSize];
+            final byte[] buffer = new byte[config.getBufferSize()];
             for (int bytesRead; bytesToRead > 0
                     && (bytesRead = in.read(buffer, 0,
                             (int) min(buffer.length, bytesToRead))) > 0;) {
@@ -610,8 +577,7 @@ public final class WebFilezServlet extends HttpServlet {
             HttpServletResponse response, Path file) throws IOException,
             ServletException {
         if (!Files.isReadable(file)) {
-            this.refuseRequest(request, response,
-                    HttpServletResponse.SC_FORBIDDEN,
+            this.refuseRequest(request, response, SC_FORBIDDEN,
                     "Cannot send file [" + file + "] for request URI ["
                             + request.getRequestURI()
                             + "]; file cannot be read");
@@ -645,7 +611,7 @@ public final class WebFilezServlet extends HttpServlet {
                                 + request.getRequestURI() + " of type "
                                 + contentType);
                     }
-                    response.setStatus(HttpServletResponse.SC_OK);
+                    response.setStatus(SC_OK);
                     response.setContentType(contentType);
                     setContentLength(response, length);
                     if (!isHead(request)) {
@@ -659,7 +625,7 @@ public final class WebFilezServlet extends HttpServlet {
                                 + request.getRequestURI() + " of type "
                                 + contentType);
                     }
-                    response.setStatus(HttpServletResponse.SC_PARTIAL_CONTENT);
+                    response.setStatus(SC_PARTIAL_CONTENT);
                     response.addHeader("Content-Range",
                             range.toContentRangeHeaderValue());
                     setContentLength(response, range.getBytesToRead());
@@ -673,7 +639,7 @@ public final class WebFilezServlet extends HttpServlet {
                                 + ranges + " of " + request.getRequestURI()
                                 + " of type " + contentType);
                     }
-                    response.setStatus(HttpServletResponse.SC_PARTIAL_CONTENT);
+                    response.setStatus(SC_PARTIAL_CONTENT);
                     response.setContentType("multipart/byteranges; boundary="
                             + MULTIPART_BOUNDARY);
                     if (!isHead(request)) {
@@ -692,7 +658,7 @@ public final class WebFilezServlet extends HttpServlet {
                     }
                 }
             } else {
-                response.setStatus(HttpServletResponse.SC_NOT_MODIFIED);
+                response.setStatus(SC_NOT_MODIFIED);
             }
         }
     }
@@ -734,8 +700,7 @@ public final class WebFilezServlet extends HttpServlet {
                 }
             }
         }
-        sendFileInfoResponse(this.getAbsoluteUri(request), uploadedFiles,
-                response);
+        sendFileInfoResponse(request, response, uploadedFiles, false);
     }
 
     private boolean handleSingleUpload(final Path target,
@@ -840,7 +805,7 @@ public final class WebFilezServlet extends HttpServlet {
         try {
             try (final OutputStream out = Files.newOutputStream(target)) {
                 long bytesToRead = sourceLength;
-                byte[] buffer = new byte[this.bufferSize];
+                byte[] buffer = new byte[config.getBufferSize()];
                 while (bytesToRead > 0) {
                     int numRead;
                     try {
@@ -915,8 +880,7 @@ public final class WebFilezServlet extends HttpServlet {
             }
             zipFiles(dir, files, zipFile);
         }
-        this.sendFileInfoResponse(this.getAbsoluteUri(request), zipFile,
-                response);
+        this.sendFileInfoResponse(request, response, zipFile, false);
     }
 
     private void handleUnzip(Path file, HttpServletRequest request,
@@ -944,9 +908,8 @@ public final class WebFilezServlet extends HttpServlet {
                 }
             }
         });
-        this.sendFileInfoResponse(
-                getParentUriPath(this.getAbsoluteUri(request)),
-                immediateCreatedFiles, response);
+        this.sendFileInfoResponse(request, response, immediateCreatedFiles,
+                true);
     }
 
     private void handleRename(Path file, HttpServletRequest request,
@@ -968,10 +931,8 @@ public final class WebFilezServlet extends HttpServlet {
             if (logger.isDebugEnabled()) {
                 logger.debug("Renamed [" + file + "] to [" + newFile + "]");
             }
-            response.setStatus(HttpServletResponse.SC_OK);
-            this.sendFileInfoResponse(
-                    getParentUriPath(this.getAbsoluteUri(request)), newFile,
-                    response);
+            response.setStatus(SC_OK);
+            this.sendFileInfoResponse(request, response, newFile, true);
         }
     }
 
@@ -1014,13 +975,12 @@ public final class WebFilezServlet extends HttpServlet {
                         logger.debug("Copied [" + source + "] to [" + target
                                 + "]");
                     }
-                    this.sendFileInfoResponse(this.getAbsoluteUri(request),
-                            target, response);
+                    this.sendFileInfoResponse(request, response, target, false);
                 }
             } else {
-                this.refuseRequest(request, response,
-                        HttpServletResponse.SC_NOT_FOUND, "Cannot copy ["
-                                + source + "] to directory [" + targetDir
+                this.refuseRequest(request, response, SC_NOT_FOUND,
+                        "Cannot copy [" + source + "] to directory ["
+                                + targetDir
                                 + "] because the source file does not exist.");
             }
         } catch (IllegalArgumentException e) {
@@ -1064,13 +1024,12 @@ public final class WebFilezServlet extends HttpServlet {
                         logger.debug("Moved [" + source + "] to [" + target
                                 + "]");
                     }
-                    this.sendFileInfoResponse(this.getAbsoluteUri(request),
-                            target, response);
+                    this.sendFileInfoResponse(request, response, target, false);
                 }
             } else {
-                this.refuseRequest(request, response,
-                        HttpServletResponse.SC_NOT_FOUND, "Cannot move ["
-                                + source + "] to directory [" + targetDir
+                this.refuseRequest(request, response, SC_NOT_FOUND,
+                        "Cannot move [" + source + "] to directory ["
+                                + targetDir
                                 + "] because the source file does not exist.");
             }
         } catch (IllegalArgumentException e) {
@@ -1113,9 +1072,10 @@ public final class WebFilezServlet extends HttpServlet {
     private Path resolvePath(final String requestedPath)
             throws UnsupportedEncodingException {
         String updatedRequestedPath = SearchAndReplace.searchAndReplace(
-                URLDecoder.decode(requestedPath, "UTF-8"), this.rewriteRules);
+                URLDecoder.decode(requestedPath, "UTF-8"),
+                config.getRewriteRules());
         final Path resolvedPath = FileSystems.getDefault().getPath(
-                this.rootDir, updatedRequestedPath);
+                config.getRootDir(), updatedRequestedPath);
         if (logger.isTraceEnabled()) {
             logger.trace("Resolved path [" + requestedPath + "] to ["
                     + resolvedPath + "]");
@@ -1173,7 +1133,7 @@ public final class WebFilezServlet extends HttpServlet {
     private String getMimeType(Path path) throws IOException {
         String mimeType;
         if (Files.isDirectory(path)) {
-            mimeType = this.directoryMimeType;
+            mimeType = config.getDirectoryMimeType();
         } else {
             mimeType = super.getServletContext().getMimeType(
                     path.getFileName().toString());
@@ -1181,30 +1141,41 @@ public final class WebFilezServlet extends HttpServlet {
                 mimeType = Files.probeContentType(path);
             }
             if (mimeType == null) {
-                mimeType = this.defaultMimeType;
+                mimeType = config.getDefaultMimeType();
             }
         }
         return mimeType;
     }
 
-    private String toUri(String baseUri, String name, boolean isDirectory)
-            throws UnsupportedEncodingException {
-        StringBuilder out = new StringBuilder(baseUri.length() + name.length()
-                + 16);
+    private String toUri(String baseUri, String name, boolean isDirectory,
+            String authToken) throws UnsupportedEncodingException {
+        StringBuilder out = new StringBuilder(baseUri.length()
+                + name.length()
+                + 16
+                + (authToken == null ? 0 : authToken.length()
+                        + config.getTokenName().length() + 2));
         out.append(baseUri);
         out.append(URLEncoder.encode(name, "UTF-8"));
         if (isDirectory) {
             out.append('/');
         }
+        if (config.isAppendAuthToUrls() && authToken != null
+                && !authToken.isEmpty()) {
+            out.append('?');
+            out.append(config.getTokenName()); // assuming URL-encoded
+            out.append('=');
+            out.append(authToken); // assuming URL-encoded
+        }
         return out.toString();
     }
 
     private long writeFileInfoToJson(String baseUri, Collection<Path> paths,
-            JSONWriter jsonWriter) throws JSONException, IOException {
+            JSONWriter jsonWriter, String authToken) throws JSONException,
+            IOException {
         long size = 0;
         jsonWriter.array();
         for (Path path : paths) {
-            size += writeFileInfoToJson(baseUri, path, jsonWriter);
+            size += writeFileInfoToJson(baseUri, path, jsonWriter, authToken);
         }
         jsonWriter.endArray();
         return size;
@@ -1223,13 +1194,15 @@ public final class WebFilezServlet extends HttpServlet {
     }
 
     private long writeFileInfoToJson(String baseUri, Path path,
-            JSONWriter jsonWriter) throws JSONException, IOException {
+            JSONWriter jsonWriter, String authToken) throws JSONException,
+            IOException {
         final long size = size(path);
         final long lastModified = Files.getLastModifiedTime(path).toMillis();
         jsonWriter.object();
         String name = path.getName(path.getNameCount() - 1).toString();
         jsonWriter.key("_links").object();
-        writeSelfLink(toUri(baseUri, name, Files.isDirectory(path)), jsonWriter);
+        writeSelfLink(toUri(baseUri, name, Files.isDirectory(path), authToken),
+                jsonWriter);
         jsonWriter.endObject();
         jsonWriter.key("name").value(name);
         jsonWriter.key("type").value(getMimeType(path));
@@ -1240,19 +1213,29 @@ public final class WebFilezServlet extends HttpServlet {
         return size;
     }
 
-    private void sendFileInfoResponse(String baseUri, Path path,
-            HttpServletResponse response) throws IOException, JSONException {
-        response.setContentType("application/json");
+    private void sendFileInfoResponse(HttpServletRequest request,
+            HttpServletResponse response, Path path, boolean parentUri)
+            throws IOException, JSONException {
+        response.setContentType(JSON_CONTENT_TYPE);
         JSONWriter jsonWriter = new JSONWriter(response.getWriter());
-        writeFileInfoToJson(baseUri, path, jsonWriter);
+        String baseUri = this.getAbsoluteUri(request);
+        if (parentUri) {
+            baseUri = getParentUriPath(baseUri);
+        }
+        writeFileInfoToJson(baseUri, path, jsonWriter, getAuthToken(request));
         response.flushBuffer();
     }
 
-    private void sendFileInfoResponse(String baseUri, Collection<Path> paths,
-            HttpServletResponse response) throws IOException, JSONException {
-        response.setContentType("application/json");
+    private void sendFileInfoResponse(HttpServletRequest request,
+            HttpServletResponse response, Collection<Path> paths,
+            boolean parentUri) throws IOException, JSONException {
+        response.setContentType(JSON_CONTENT_TYPE);
+        String baseUri = this.getAbsoluteUri(request);
+        if (parentUri) {
+            baseUri = getParentUriPath(baseUri);
+        }
         writeFileInfoToJson(baseUri, paths,
-                new JSONWriter(response.getWriter()));
+                new JSONWriter(response.getWriter()), getAuthToken(request));
         response.flushBuffer();
     }
 
@@ -1282,16 +1265,14 @@ public final class WebFilezServlet extends HttpServlet {
     private void refuseBadRequest(HttpServletRequest request,
             HttpServletResponse response, String msg, Throwable cause)
             throws ServletException, IOException {
-        refuseRequest(request, response, HttpServletResponse.SC_BAD_REQUEST,
-                msg);
+        refuseRequest(request, response, SC_BAD_REQUEST, msg);
     }
 
     private void refuseOverQuotaRequest(HttpServletRequest request,
             HttpServletResponse response, String msg, long need, long usage,
             long quota) throws ServletException, IOException {
-        this.refuseRequest(request, response,
-                HttpServletResponse.SC_REQUEST_ENTITY_TOO_LARGE, "Refusing to "
-                        + msg + ". We need [" + need
+        this.refuseRequest(request, response, SC_REQUEST_ENTITY_TOO_LARGE,
+                "Refusing to " + msg + ". We need [" + need
                         + "] bytes, we are using [" + usage
                         + "], and we have available [" + (quota - usage)
                         + "] before we reach our quota[" + quota + "]");
@@ -1301,7 +1282,7 @@ public final class WebFilezServlet extends HttpServlet {
             HttpServletResponse response, String msg, Throwable cause)
             throws ServletException, IOException {
         logger.error(msg, cause);
-        response.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR);
+        response.sendError(SC_INTERNAL_SERVER_ERROR);
     }
 
     private void sendServerFailure(HttpServletRequest request,
@@ -1345,7 +1326,7 @@ public final class WebFilezServlet extends HttpServlet {
             basePath = "/";
         }
         if (strict) {
-            Matcher matcher = this.basePathPattern.matcher(basePath);
+            Matcher matcher = config.getBasePathPattern().matcher(basePath);
             if (!matcher.matches()) {
                 if (matcher.reset(request.getRequestURI()).matches()) {
                     basePath = matcher.group(1);
@@ -1354,7 +1335,7 @@ public final class WebFilezServlet extends HttpServlet {
                         logger.debug("Cannot extract strict base-path where ["
                                 + request.getRequestURI()
                                 + "] does not match ["
-                                + this.basePathPattern.pattern() + "]");
+                                + config.getBasePathPattern().pattern() + "]");
                     }
                 }
             }
@@ -1375,6 +1356,10 @@ public final class WebFilezServlet extends HttpServlet {
         return v != null && v.booleanValue();
     }
 
+    private String getAuthToken(HttpServletRequest request) {
+        return (String) request.getAttribute(AUTH_TOKEN_ATTR_NAME);
+    }
+
     private boolean fileExistsOrItIsTheBasePathAndIsCreated(Path file,
             String uri, String basePath, boolean writeAllowed)
             throws IOException {
@@ -1384,7 +1369,7 @@ public final class WebFilezServlet extends HttpServlet {
             }
             return true;
         } else if (uri != null && uri.equals(basePath) && writeAllowed
-                || this.alwaysAllowCreationOfBasePathOnRead) {
+                || config.isAlwaysAllowCreationOfBasePathOnRead()) {
             Files.createDirectories(file);
             if (logger.isDebugEnabled()) {
                 logger.debug("Created the base dir [" + file + "]");
@@ -1399,16 +1384,5 @@ public final class WebFilezServlet extends HttpServlet {
             }
             return false;
         }
-    }
-
-    @Override
-    public String toString() {
-        return "WebFilezServlet [bufferSize=" + bufferSize
-                + ", defaultMimeType=" + defaultMimeType
-                + ", directoryMimeType=" + directoryMimeType
-                + ", readmeFileName=" + readmeFileName + ", rootDir=" + rootDir
-                + ", rewriteRules=" + rewriteRules + ", basePathPattern="
-                + basePathPattern + ", alwaysAllowCreationOfBasePathOnRead="
-                + alwaysAllowCreationOfBasePathOnRead + "]";
     }
 }

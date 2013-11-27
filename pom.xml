@@ -54,7 +54,7 @@
 
 	<properties>
 		<final-name>webfilez</final-name>
-		<webapp-directory>../../tomcat/webapps</webapp-directory>
+		<webapp-directory>target/webapps</webapp-directory>
 		<project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
 		<compiler-plugin-version>3.0</compiler-plugin-version>
 		<war-plugin-version>2.3</war-plugin-version>
@@ -155,7 +155,7 @@
 		<dependency>
 			<groupId>com.twitter.university</groupId>
 			<artifactId>webauthz</artifactId>
-			<version>1.1.0</version>
+			<version>1.2.0</version>
 		</dependency>
 	</dependencies>
 </project>
